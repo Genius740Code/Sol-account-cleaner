@@ -1,0 +1,81 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Configuration files (if they contain secrets)
+config/local.toml
+config/production.toml
+
+# Temporary files
+*.tmp
+*.temp
+
+# Debug files
+debug/
+*.pdb
+
+# Backup files
+*.bak
+*.backup
+
+# Node.js (if using for frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Documentation build
+docs/build/
+book/
+
+# Coverage reports
+tarpaulin-report.html
+cobertura.xml
+
+# Database
+*.db
+*.sqlite
+
+# Docker
+.dockerignore
+
+# Kubernetes secrets
+secrets/
+*.key
+*.pem
+*.crt
+
+# Performance profiling
+perf.data*
+flamegraph.svg
+
+# Test artifacts
+/tests/output/
+/benches/output/
+
+# Rust analyzer
+.rust-analyzer/
+
+# Local development
+.local/
+local/

@@ -1,0 +1,113 @@
+use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
+use std::vec::Vec;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletInfo {
+    pub address: String,
+    pub pubkey: Pubkey,
+    pub total_accounts: u64,
+    pub empty_accounts: u64,
+    pub recoverable_lamports: u64,
+    pub recoverable_sol: f64,
+    pub empty_account_addresses: Vec<String>,
+    pub scan_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmptyAccount {
+    pub address: String,
+    pub lamports: u64,
+    pub owner: String,
+    pub mint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanResult {
+    pub id: Uuid,
+    pub wallet_address: String,
+    pub status: ScanStatus,
+    pub result: Option<WalletInfo>,
+    pub error: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ScanStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchScanRequest {
+    pub id: Uuid,
+    pub wallet_addresses: Vec<String>,
+    pub user_id: Option<String>,
+    pub fee_percentage: Option<f64>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchScanResult {
+    pub id: Uuid,
+    pub total_wallets: usize,
+    pub completed_wallets: usize,
+    pub failed_wallets: usize,
+    pub total_recoverable_sol: f64,
+    pub estimated_fee_sol: f64,
+    pub results: Vec<ScanResult>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcEndpoint {
+    pub url: String,
+    pub priority: u8,
+    pub rate_limit_rps: u32,
+    pub timeout_ms: u64,
+    pub healthy: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeeStructure {
+    pub percentage: f64,
+    pub minimum_lamports: u64,
+    pub maximum_lamports: Option<u64>,
+    pub waive_below_lamports: Option<u64>,
+}
+
+impl Default for FeeStructure {
+    fn default() -> Self {
+        Self {
+            percentage: 0.15, // 15%
+            minimum_lamports: 1_000_000, // 0.001 SOL
+            maximum_lamports: None,
+            waive_below_lamports: Some(10_000_000), // 0.01 SOL
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub email: Option<String>,
+    pub api_key: Option<String>,
+    pub fee_structure: Option<FeeStructure>,
+    pub rate_limit_rps: Option<u32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanMetrics {
+    pub total_scans: u64,
+    pub successful_scans: u64,
+    pub failed_scans: u64,
+    pub total_recoverable_sol: f64,
+    pub average_scan_time_ms: f64,
+    pub wallets_processed: u64,
+    pub empty_accounts_found: u64,
+}
