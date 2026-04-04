@@ -11,8 +11,6 @@
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_sdk::pubkey::Pubkey;
-use spl_token::state::Account as TokenAccount;
-use solana_sdk::program_pack::Pack; // Needed for TokenAccount::unpack
 use std::str::FromStr;
 
 // 1 SOL = 1,000,000,000 lamports (the smallest unit on Solana)
