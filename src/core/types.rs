@@ -53,14 +53,18 @@ pub struct BatchScanRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchScanResult {
     pub id: Uuid,
+    pub batch_id: Option<String>, // For backward compatibility
     pub total_wallets: usize,
-    pub completed_wallets: usize,
-    pub failed_wallets: usize,
+    pub successful_scans: usize,
+    pub failed_scans: usize,
+    pub completed_wallets: usize, // For backward compatibility
+    pub failed_wallets: usize,   // For backward compatibility
     pub total_recoverable_sol: f64,
     pub estimated_fee_sol: f64,
     pub results: Vec<ScanResult>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,11 +98,13 @@ impl Default for FeeStructure {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
-    pub email: Option<String>,
+    pub email: String,
     pub api_key: Option<String>,
     pub fee_structure: Option<FeeStructure>,
     pub rate_limit_rps: Option<u32>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub last_active: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,4 +116,5 @@ pub struct ScanMetrics {
     pub average_scan_time_ms: f64,
     pub wallets_processed: u64,
     pub empty_accounts_found: u64,
+    pub requests_per_second: f64,
 }

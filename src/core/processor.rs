@@ -6,22 +6,74 @@ use std::time::Instant;
 use uuid::Uuid;
 use chrono::Utc;
 
+#[derive(Clone)]
 pub struct BatchProcessor {
     scanner: Arc<crate::core::scanner::WalletScanner>,
+    #[allow(dead_code)]
+    cache_manager: Option<Arc<crate::storage::CacheManager>>,
+    #[allow(dead_code)]
+    persistence_manager: Option<Arc<dyn crate::storage::PersistenceManager>>,
     max_concurrent_scans: usize,
+    #[allow(dead_code)]
+    batch_size: usize,
+    #[allow(dead_code)]
+    retry_attempts: u32,
+    #[allow(dead_code)]
+    retry_delay_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessorConfig {
+    pub batch_size: usize,
+    pub max_concurrent_wallets: usize,
+    pub retry_attempts: u32,
+    pub retry_delay_ms: u64,
+}
+
+impl Default for ProcessorConfig {
+    fn default() -> Self {
+        Self {
+            batch_size: 100,
+            max_concurrent_wallets: 1000,
+            retry_attempts: 3,
+            retry_delay_ms: 1000,
+        }
+    }
 }
 
 impl BatchProcessor {
-    pub fn new(connection_pool: Arc<ConnectionPool>, max_concurrent_scans: usize) -> Self {
+    pub fn new(
+        scanner: Arc<crate::core::scanner::WalletScanner>,
+        cache_manager: Option<Arc<crate::storage::CacheManager>>,
+        persistence_manager: Option<Arc<dyn crate::storage::PersistenceManager>>,
+        config: ProcessorConfig,
+    ) -> Self {
+        Self {
+            scanner,
+            cache_manager,
+            persistence_manager,
+            max_concurrent_scans: config.max_concurrent_wallets,
+            batch_size: config.batch_size,
+            retry_attempts: config.retry_attempts,
+            retry_delay_ms: config.retry_delay_ms,
+        }
+    }
+
+    pub fn new_simple(connection_pool: Arc<ConnectionPool>, max_concurrent_scans: usize) -> Self {
         let scanner = Arc::new(crate::core::scanner::WalletScanner::new(connection_pool));
         Self {
             scanner,
+            cache_manager: None,
+            persistence_manager: None,
             max_concurrent_scans,
+            batch_size: 100,
+            retry_attempts: 3,
+            retry_delay_ms: 1000,
         }
     }
 
     pub async fn process_batch(&self, request: &BatchScanRequest) -> Result<BatchScanResult> {
-        let _start_time = Instant::now();
+        let start_time = Instant::now();
         
         let results: Vec<ScanResult> = request.wallet_addresses
             .par_chunks(self.max_concurrent_scans)
@@ -65,10 +117,14 @@ impl BatchProcessor {
             .unwrap_or_default();
 
         let estimated_fee_sol = self.calculate_fee(total_recoverable_sol, &fee_structure);
+        let duration_ms = start_time.elapsed().as_millis() as u64;
 
         Ok(BatchScanResult {
             id: request.id,
+            batch_id: Some(request.id.to_string()),
             total_wallets: request.wallet_addresses.len(),
+            successful_scans: completed_wallets,
+            failed_scans: failed_wallets,
             completed_wallets,
             failed_wallets,
             total_recoverable_sol,
@@ -76,6 +132,7 @@ impl BatchProcessor {
             results,
             created_at: request.created_at,
             completed_at: Some(Utc::now()),
+            duration_ms: Some(duration_ms),
         })
     }
 

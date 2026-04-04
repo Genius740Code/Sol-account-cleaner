@@ -17,6 +17,12 @@ pub enum SolanaRecoverError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
     
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
+    
+    #[error("Storage error: {0}")]
+    StorageError(String),
+    
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
     

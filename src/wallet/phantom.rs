@@ -15,23 +15,27 @@ impl PhantomProvider {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct PhantomConnectRequest {
     encrypted_private_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct PhantomConnectResponse {
     session_id: String,
     public_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct PhantomSignRequest {
     session_id: String,
     transaction: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct PhantomSignResponse {
     signature: String,
 }

@@ -1,0 +1,33 @@
+[server]
+host = "127.0.0.1"
+port = 3000
+workers = 2
+
+[rpc]
+endpoints = ["https://api.devnet.solana.com"]
+pool_size = 5
+timeout_ms = 10000
+rate_limit_rps = 50
+
+[scanner]
+batch_size = 50
+max_concurrent_wallets = 100
+retry_attempts = 2
+retry_delay_ms = 2000
+
+[cache]
+ttl_seconds = 60
+max_size = 1000
+cleanup_interval_seconds = 30
+
+[turnkey]
+api_url = "https://api.turnkey.com"
+timeout_ms = 15000
+
+[database]
+database_url = "sqlite:./solana_recover_dev.db"
+max_connections = 5
+
+[logging]
+level = "debug"
+format = "pretty"

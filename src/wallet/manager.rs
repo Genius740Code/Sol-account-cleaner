@@ -43,7 +43,7 @@ pub trait WalletProvider: Send + Sync {
     async fn disconnect(&self, connection: &WalletConnection) -> Result<()>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WalletConnection {
     pub id: String,
     pub wallet_type: WalletType,
@@ -51,7 +51,7 @@ pub struct WalletConnection {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ConnectionData {
     Turnkey { session_token: String },
     Phantom { session_id: String },

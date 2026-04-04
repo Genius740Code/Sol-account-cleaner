@@ -1,0 +1,34 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+workers = 4
+
+[rpc]
+endpoints = ["https://api.mainnet-beta.solana.com"]
+pool_size = 10
+timeout_ms = 5000
+rate_limit_rps = 100
+
+[scanner]
+batch_size = 100
+max_concurrent_wallets = 1000
+retry_attempts = 3
+retry_delay_ms = 1000
+
+[cache]
+ttl_seconds = 300
+max_size = 10000
+cleanup_interval_seconds = 60
+
+[turnkey]
+api_url = "https://api.turnkey.com"
+timeout_ms = 10000
+
+[database]
+database_url = "sqlite:./solana_recover.db"
+max_connections = 10
+
+[logging]
+level = "info"
+format = "json"
+# file_path = "/var/log/solana_recover.log"

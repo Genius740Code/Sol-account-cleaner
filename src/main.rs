@@ -1,142 +1,308 @@
-// ============================================================
-// Solana Recoverable SOL Calculator
-// ============================================================
-// This program scans all SPL token accounts owned by a given
-// wallet and identifies "empty" ones (zero token balance).
-// Empty accounts still hold a rent deposit (in lamports) that
-// can be reclaimed by closing them — this tool tells you how
-// much SOL you could recover.
-// ============================================================
+use clap::{Parser, Subcommand};
+use solana_recover::{
+    Config, WalletScanner, ConnectionPool, BatchProcessor, 
+    CacheManager, SqlitePersistenceManager, RpcEndpoint
+};
+use solana_recover::wallet::WalletManager;
+use std::sync::Arc;
+use tracing::{info, error, warn};
 
-use solana_client::rpc_client::RpcClient;
-use solana_client::rpc_request::TokenAccountsFilter;
-use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
+#[derive(Parser)]
+#[command(name = "solana-recover")]
+#[command(about = "A scalable Solana wallet scanner for finding recoverable SOL")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+    
+    /// Configuration file path
+    #[arg(short, long)]
+    config: Option<String>,
+    
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(short, long, default_value = "info")]
+    log_level: String,
+}
 
-// 1 SOL = 1,000,000,000 lamports (the smallest unit on Solana)
-const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
+#[derive(Subcommand)]
+enum Commands {
+    /// Scan a single wallet for recoverable SOL
+    Scan {
+        /// Wallet address to scan
+        #[arg(help = "Solana wallet public key")]
+        address: String,
+        
+        /// Output format (json, table)
+        #[arg(short, long, default_value = "table")]
+        format: String,
+    },
+    /// Scan multiple wallets from a file
+    Batch {
+        /// File containing wallet addresses (one per line)
+        #[arg(help = "Path to file with wallet addresses")]
+        file: String,
+        
+        /// Output directory for results
+        #[arg(short, long, default_value = "./results")]
+        output: String,
+    },
+    /// Start the API server
+    Server {
+        /// Host to bind to
+        #[arg(long, default_value = "0.0.0.0")]
+        host: Option<String>,
+        
+        /// Port to bind to
+        #[arg(short = 'p', long)]
+        port: Option<u16>,
+    },
+    /// Show configuration
+    Config {
+        /// Show current configuration
+        #[arg(short, long)]
+        show: bool,
+    },
+}
 
-fn main() {
-    // --------------------------------------------------------
-    // Step 1: Define the wallet public key to inspect.
-    // Replace this string with any valid Solana wallet address.
-    // --------------------------------------------------------
-    let wallet_address = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
-
-    println!("============================================");
-    println!(" Solana Recoverable SOL Calculator");
-    println!("============================================");
-    println!("Wallet: {}\n", wallet_address);
-
-    // --------------------------------------------------------
-    // Step 2: Parse the wallet address string into a Pubkey.
-    // Pubkey is Solana's public key type (32-byte address).
-    // --------------------------------------------------------
-    let wallet_pubkey = Pubkey::from_str(wallet_address)
-        .expect("Invalid wallet public key. Please provide a valid base58 Solana address.");
-
-    // --------------------------------------------------------
-    // Step 3: Connect to Solana mainnet-beta via RpcClient.
-    // RpcClient talks to a Solana JSON-RPC node over HTTPS.
-    // No private key or signing is required — read-only!
-    // --------------------------------------------------------
-    let rpc_url = "https://api.mainnet-beta.solana.com";
-    let client = RpcClient::new(rpc_url.to_string());
-
-    println!("Connected to: {}", rpc_url);
-    println!("Fetching SPL token accounts...\n");
-
-    // --------------------------------------------------------
-    // Step 4: Fetch all SPL token accounts owned by the wallet.
-    // We filter by the SPL Token program ID so we only get
-    // token accounts, not other account types.
-    // --------------------------------------------------------
-    let token_program_id = spl_token::id(); // The official SPL Token program address
-
-    let token_accounts = client
-        .get_token_accounts_by_owner(
-            &wallet_pubkey,
-            TokenAccountsFilter::ProgramId(token_program_id),
-        )
-        .expect("Failed to fetch token accounts. Check your internet connection or RPC endpoint.");
-
-    let total_accounts = token_accounts.len();
-    println!("Total token accounts found: {}", total_accounts);
-
-    // --------------------------------------------------------
-    // Step 5: Loop through each account and check balance.
-    // We unpack the raw account data bytes into a TokenAccount
-    // struct to read the `amount` (token balance) field.
-    // --------------------------------------------------------
-    let mut empty_accounts: Vec<String> = Vec::new();
-    let mut total_recoverable_lamports: u64 = 0;
-
-    for keyed_account in &token_accounts {
-        let address = &keyed_account.pubkey; // The token account's public key (as a string)
-
-        // The account data is returned as base64-encoded bytes.
-        // We decode and unpack it into the TokenAccount struct.
-        let account_data = &keyed_account.account.data;
-
-        // solana_account_decoder returns data as UiAccountData enum;
-        // we use the parsed UI form instead — amount is in `token_amount`
-        // via UiTokenAccount. We access it from the JSON-parsed form:
-        if let solana_account_decoder::UiAccountData::Json(parsed) = account_data {
-            // Navigate the parsed JSON to find the token balance
-            if let Some(info) = parsed.parsed.get("info") {
-                if let Some(token_amount) = info.get("tokenAmount") {
-                    if let Some(amount_str) = token_amount.get("amount") {
-                        // `amount` is a string like "0" or "1000000"
-                        let amount: u64 = amount_str
-                            .as_str()
-                            .unwrap_or("1") // default non-zero to skip
-                            .parse()
-                            .unwrap_or(1);
-
-                        if amount == 0 {
-                            // This account has zero tokens — it's empty!
-                            // Retrieve how many lamports (rent) it holds.
-                            let lamports = keyed_account.account.lamports;
-                            total_recoverable_lamports += lamports;
-                            empty_accounts.push(address.clone());
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+    
+    // Load configuration
+    let mut config = if let Some(config_path) = &cli.config {
+        Config::from_file(config_path)?
+    } else {
+        Config::load()?
+    };
+    
+    // Override log level from CLI
+    config.logging.level = cli.log_level.clone();
+    
+    // Validate configuration
+    config.validate()?;
+    
+    // Initialize logging
+    init_logging(&config.logging)?;
+    
+    info!("Starting Solana Recover v{}", env!("CARGO_PKG_VERSION"));
+    info!("Configuration loaded successfully");
+    
+    // Initialize core components
+    let rpc_endpoints: Vec<RpcEndpoint> = config.rpc.endpoints
+        .iter()
+        .enumerate()
+        .map(|(i, url)| RpcEndpoint {
+            url: url.clone(),
+            priority: i as u8,
+            rate_limit_rps: config.rpc.rate_limit_rps,
+            timeout_ms: config.rpc.timeout_ms,
+            healthy: true,
+        })
+        .collect();
+    
+    let connection_pool = Arc::new(ConnectionPool::new(rpc_endpoints, config.rpc.pool_size));
+    let cache_manager = Arc::new(CacheManager::new(config.cache.clone().into()));
+    let persistence_manager = Arc::new(
+        SqlitePersistenceManager::new(config.database.clone().into()).await?
+    );
+    let wallet_manager = Arc::new(WalletManager::new());
+    
+    let scanner = Arc::new(WalletScanner::new(connection_pool.clone()));
+    let batch_processor = Arc::new(BatchProcessor::new(
+        scanner.clone(),
+        Some(cache_manager.clone()),
+        Some(persistence_manager.clone()),
+        config.scanner.clone().into(),
+    ));
+    
+    // Execute command
+    match cli.command {
+        Commands::Scan { address, format } => {
+            info!("Scanning wallet: {}", address);
+            
+            match scanner.scan_wallet(&address).await {
+                Ok(result) => {
+                    match format.as_str() {
+                        "json" => {
+                            println!("{}", serde_json::to_string_pretty(&result)?);
+                        }
+                        "table" => {
+                            print_scan_result(&result);
+                        }
+                        _ => {
+                            error!("Unsupported format: {}", format);
+                            return Err("Unsupported format".into());
                         }
                     }
                 }
+                Err(e) => {
+                    error!("Failed to scan wallet: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        
+        Commands::Batch { file, output } => {
+            info!("Starting batch scan from file: {}", file);
+            
+            // Read wallet addresses from file
+            let addresses = std::fs::read_to_string(&file)?
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.trim().to_string())
+                .collect::<Vec<String>>();
+            
+            if addresses.is_empty() {
+                warn!("No wallet addresses found in file: {}", file);
+                return Ok(());
+            }
+            
+            info!("Found {} wallet addresses to scan", addresses.len());
+            
+            // Create output directory
+            std::fs::create_dir_all(&output)?;
+            
+            // Execute batch scan
+            let batch_request = solana_recover::BatchScanRequest {
+                id: uuid::Uuid::new_v4(),
+                wallet_addresses: addresses,
+                user_id: Some("cli_user".to_string()),
+                fee_percentage: None,
+                created_at: chrono::Utc::now(),
+            };
+            
+            match batch_processor.process_batch(&batch_request).await {
+                Ok(result) => {
+                    // Save results to file
+                    let results_file = format!("{}/batch_results.json", output);
+                    std::fs::write(&results_file, serde_json::to_string_pretty(&result)?)?;
+                    
+                    info!("Batch scan completed successfully");
+                    info!("Results saved to: {}", results_file);
+                    print_batch_summary(&result);
+                }
+                Err(e) => {
+                    error!("Batch scan failed: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        
+        Commands::Server { host, port } => {
+            info!("Starting API server");
+            
+            // Override host/port from CLI if provided
+            if let Some(host) = host {
+                config.server.host = host;
+            }
+            if let Some(port) = port {
+                config.server.port = port;
+            }
+            
+            // Start API server
+            let api_state = solana_recover::api::server::ApiState {
+                scanner: scanner.clone(),
+                batch_processor: batch_processor.clone(),
+                wallet_manager: wallet_manager.clone(),
+                cache_manager: cache_manager.clone(),
+                persistence_manager: persistence_manager.clone(),
+                config: config.clone(),
+            };
+            
+            let server = solana_recover::api::server::start_server(api_state, &config.server).await?;
+            
+            info!("API server started on {}:{}", config.server.host, config.server.port);
+            
+            // Wait for shutdown signal
+            tokio::signal::ctrl_c().await?;
+            info!("Received shutdown signal");
+            
+            server.shutdown().await?;
+            info!("Server shutdown complete");
+        }
+        
+        Commands::Config { show } => {
+            if show {
+                println!("Current Configuration:");
+                println!("{}", serde_json::to_string_pretty(&config)?);
             }
         }
     }
+    
+    Ok(())
+}
 
-    // --------------------------------------------------------
-    // Step 6: Convert total lamports to SOL for display.
-    // --------------------------------------------------------
-    let recoverable_sol = total_recoverable_lamports as f64 / LAMPORTS_PER_SOL;
-
-    // --------------------------------------------------------
-    // Step 7: Print the results summary.
-    // --------------------------------------------------------
-    println!("\n============================================");
-    println!(" Results");
-    println!("============================================");
-    println!("Total token accounts:   {}", total_accounts);
-    println!("Empty accounts:         {}", empty_accounts.len());
-    println!(
-        "Recoverable SOL:        {:.9} SOL  ({} lamports)",
-        recoverable_sol, total_recoverable_lamports
-    );
-
-    // Optional: list each empty account address
-    if !empty_accounts.is_empty() {
-        println!("\nEmpty account addresses:");
-        for (i, addr) in empty_accounts.iter().enumerate() {
-            println!("  {}. {}", i + 1, addr);
-        }
+fn init_logging(config: &solana_recover::LoggingConfig) -> Result<(), Box<dyn std::error::Error>> {
+    use tracing_subscriber::fmt;
+    use std::str::FromStr;
+    
+    let level = tracing::Level::from_str(&config.level)
+        .unwrap_or(tracing::Level::INFO);
+    
+    if config.format == "json" {
+        fmt()
+            .with_max_level(level)
+            .json()
+            .init();
     } else {
-        println!("\nNo empty token accounts found for this wallet.");
+        fmt()
+            .with_max_level(level)
+            .pretty()
+            .init();
     }
+    
+    Ok(())
+}
 
-    println!("\n============================================");
-    println!(" Tip: Close these accounts using a tool like");
-    println!(" 'spl-token close' or a wallet UI (e.g.,");
-    println!(" Phantom or Solflare) to reclaim the SOL.");
+fn print_scan_result(result: &solana_recover::ScanResult) {
+    println!("============================================");
+    println!(" Scan Results");
+    println!("============================================");
+    println!("Scan ID: {}", result.id);
+    println!("Wallet:  {}", result.wallet_address);
+    println!("Status:  {:?}", result.status);
+    println!("Created: {}", result.created_at);
+    
+    if let Some(wallet_info) = &result.result {
+        println!();
+        println!("Total token accounts:   {}", wallet_info.total_accounts);
+        println!("Empty accounts:         {}", wallet_info.empty_accounts);
+        println!(
+            "Recoverable SOL:        {:.9} SOL  ({} lamports)",
+            wallet_info.recoverable_sol, wallet_info.recoverable_lamports
+        );
+        
+        if !wallet_info.empty_account_addresses.is_empty() {
+            println!("\nEmpty account addresses:");
+            for (i, addr) in wallet_info.empty_account_addresses.iter().enumerate() {
+                println!("  {}. {}", i + 1, addr);
+            }
+        }
+    }
+    
+    if let Some(error) = &result.error {
+        println!("\nError: {}", error);
+    }
+    
+    println!("============================================");
+}
+
+fn print_batch_summary(result: &solana_recover::BatchScanResult) {
+    println!("============================================");
+    println!(" Batch Scan Summary");
+    println!("============================================");
+    println!("Batch ID:      {:?}", result.batch_id);
+    println!("Total wallets: {}", result.total_wallets);
+    println!("Successful:    {}", result.successful_scans);
+    println!("Failed:        {}", result.failed_scans);
+    
+    let total_recoverable: f64 = result.results
+        .iter()
+        .filter_map(|r| r.result.as_ref())
+        .map(|w| w.recoverable_sol)
+        .sum();
+    
+    println!("Total recoverable SOL: {:.9}", total_recoverable);
+    println!("Duration: {:?}ms", result.duration_ms);
     println!("============================================");
 }
