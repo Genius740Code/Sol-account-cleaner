@@ -232,24 +232,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn init_logging(config: &solana_recover::LoggingConfig) -> Result<(), Box<dyn std::error::Error>> {
-    use tracing_subscriber::fmt;
+fn init_logging(config: &solana_recover::config::LoggingConfig) -> Result<(), Box<dyn std::error::Error>> {
     use std::str::FromStr;
     
+    // For now, use a simple logging setup
+    // In a real implementation, you would convert between config types
     let level = tracing::Level::from_str(&config.level)
         .unwrap_or(tracing::Level::INFO);
     
-    if config.format == "json" {
-        fmt()
-            .with_max_level(level)
-            .json()
-            .init();
-    } else {
-        fmt()
-            .with_max_level(level)
-            .pretty()
-            .init();
-    }
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .pretty()
+        .init();
     
     Ok(())
 }

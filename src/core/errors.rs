@@ -32,11 +32,17 @@ pub enum SolanaRecoverError {
     #[error("Timeout error: {0}")]
     TimeoutError(String),
     
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    
     #[error("Authentication error: {0}")]
     AuthenticationError(String),
     
     #[error("Invalid fee structure: {0}")]
     InvalidFeeStructure(String),
+    
+    #[error("Validation error: {0}")]
+    ValidationError(String),
     
     #[error("Wallet not found: {0}")]
     WalletNotFound(String),

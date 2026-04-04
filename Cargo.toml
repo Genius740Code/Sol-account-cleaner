@@ -31,3 +31,17 @@ tokio-test = "0.4"
 # sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"], default-features = false, optional = true }
 rusqlite = { version = "0.31", features = ["bundled", "chrono", "uuid"] }
 toml = "0.8"
+
+# Performance optimization dependencies
+moka = { version = "0.12", features = ["future"] } # High-performance caching
+parking_lot = "0.12" # Fast mutexes and rwlocks
+crossbeam = "0.8" # Concurrent data structures
+flume = "0.11" # Fast channels
+lru = "0.12" # LRU cache implementation
+bytes = "1.5" # Efficient byte operations
+prost = "0.12" # Protocol buffers for efficient serialization
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3" # Async utilities
+smallvec = { version = "1.11", features = ["serde"] } # Small vector optimization
+once_cell = "1.19" # Efficient one-time initialization
+fastrand = "2.0" # Fast random number generation
