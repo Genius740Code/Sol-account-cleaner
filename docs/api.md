@@ -1,6 +1,6 @@
 # Solana Recover API Documentation
 
-This document provides comprehensive documentation for the Solana Recover REST API, including endpoints, request/response formats, authentication, and usage examples.
+This document provides comprehensive documentation for the Solana Recover REST API, a production-ready, high-performance system for scanning Solana wallets and recovering SOL from empty token accounts. The API supports advanced features including Turnkey wallet integration, batch processing, and enterprise-grade security.
 
 ## Table of Contents
 
@@ -53,11 +53,15 @@ curl -H "Authorization: Bearer your-jwt-token" \
 
 The Solana Recover API provides the following main capabilities:
 
-- **Single Wallet Scanning**: Scan individual wallets for recoverable SOL
-- **Batch Processing**: Scan multiple wallets efficiently
-- **Health Checks**: Monitor API status and performance
-- **Metrics**: Retrieve usage and performance metrics
-- **Webhooks**: Receive notifications for scan completion
+- **Single Wallet Scanning**: Scan individual wallets for recoverable SOL with detailed balance information
+- **Batch Processing**: Efficiently scan multiple wallets with parallel processing
+- **SOL Recovery**: Execute automated SOL recovery from empty token accounts
+- **Turnkey Integration**: Full support for Turnkey wallet connections and signing
+- **Wallet Management**: Support for multiple wallet providers (Turnkey, Phantom, Solflare)
+- **Health Checks**: Comprehensive API status and performance monitoring
+- **Metrics**: Detailed usage and performance analytics
+- **Webhooks**: Real-time notifications for scan completion
+- **Enterprise Features**: Advanced security, rate limiting, and user management
 
 ### API Versioning
 
@@ -375,6 +379,49 @@ Register a webhook to receive scan completion notifications.
 
 ---
 
+### Wallet Connection Management
+
+#### POST /api/v1/wallets/connect
+
+Connect a wallet for signing operations.
+
+**Request Body:**
+```json
+{
+  "wallet_type": "turnkey",
+  "credentials": {
+    "api_key": "your-turnkey-api-key",
+    "organization_id": "your-org-id",
+    "private_key_id": "your-key-id"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "connection_id": "conn-123456",
+  "wallet_type": "turnkey",
+  "public_key": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  "created_at": "2024-01-15T10:30:00Z",
+  "expires_at": "2024-01-16T10:30:00Z"
+}
+```
+
+#### DELETE /api/v1/wallets/{connection_id}
+
+Disconnect a wallet connection.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Wallet connection terminated"
+}
+```
+
+---
+
 ### SOL Recovery
 
 #### POST /api/v1/recover
@@ -401,7 +448,7 @@ Recover SOL from empty accounts for a wallet.
 - `wallet_address` (string, required): Source wallet address
 - `empty_accounts` (array, required): Array of empty account addresses to recover
 - `destination_address` (string, required): Destination wallet for recovered SOL
-- `wallet_connection_id` (string, optional): Wallet connection ID for signing
+- `wallet_connection_id` (string, optional): Wallet connection ID for signing (supports Turnkey)
 - `max_fee_lamports` (integer, optional): Maximum fee in lamports
 - `priority_fee_lamports` (integer, optional): Priority fee in lamports
 - `user_id` (string, optional): User identifier

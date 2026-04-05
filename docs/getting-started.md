@@ -1,6 +1,6 @@
 # Getting Started with Solana Recover
 
-Welcome to Solana Recover! This guide will help you get up and running quickly, whether you're an individual user looking to recover SOL from unused token accounts or a developer integrating the tool into your applications.
+Welcome to Solana Recover! This guide will help you get up and running quickly with our production-ready, high-performance system for scanning Solana wallets and recovering SOL from empty token accounts. Whether you're an individual user looking to recover SOL, a developer integrating wallet functionality, or a business deploying enterprise-scale solutions, this guide has you covered.
 
 ## Table of Contents
 
@@ -289,11 +289,23 @@ solana-recover batch customer_wallets.txt --output ./customer_results
 python scripts/generate_summary.py ./customer_results
 ```
 
-### Example 3: API Integration
+### Example 3: API Integration with Wallet Support
 
 ```bash
-# Start the API server in background
+# Start API server in background
 solana-recover server --port 8080 &
+
+# Connect Turnkey wallet
+curl -X POST http://localhost:8080/api/v1/wallets/connect \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wallet_type": "turnkey",
+    "credentials": {
+      "api_key": "your-turnkey-api-key",
+      "organization_id": "your-org-id",
+      "private_key_id": "your-key-id"
+    }
+  }'
 
 # Scan wallet via API
 curl -X POST http://localhost:8080/api/v1/scan \
@@ -332,18 +344,20 @@ rate_limit_rps = 200
 
 ### For Individual Users
 
-1. **Scan Your Wallets**: Use the CLI to check your personal wallets
-2. **Understand Fees**: Learn about the fee structure and recovery process
-3. **Recover Funds**: Follow the recovery process to claim your SOL
-4. **Monitor**: Regularly scan for new empty accounts
+1. **Scan Your Wallets**: Use CLI or API to check your personal wallets for recoverable SOL
+2. **Check Balances**: View detailed balance information and empty token accounts
+3. **Connect Wallets**: Use Turnkey or other supported wallet providers
+4. **Recover Funds**: Follow automated recovery process to claim your SOL
+5. **Monitor**: Regularly scan for new empty accounts
 
 ### For Developers
 
-1. **API Integration**: Use the REST API for application integration
-2. **Batch Processing**: Implement batch processing for multiple users
-3. **Custom Configuration**: Optimize settings for your use case
-4. **Monitoring**: Set up metrics and alerting
-5. **Examples**: Check the `examples/` directory for code samples
+1. **API Integration**: Use REST API for application integration with full wallet support
+2. **Batch Processing**: Implement efficient batch processing for multiple users
+3. **Wallet Integration**: Integrate Turnkey, Phantom, and other wallet providers
+4. **Custom Configuration**: Optimize settings for your use case
+5. **Monitoring**: Set up comprehensive metrics and alerting
+6. **Examples**: Check `examples/` directory for complete code samples
 
 ### For Businesses
 

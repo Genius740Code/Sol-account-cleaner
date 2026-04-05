@@ -1,6 +1,6 @@
 # Configuration Reference
 
-This comprehensive reference covers all configuration options available in Solana Recover, including server settings, database configuration, RPC endpoints, performance tuning, and security settings.
+This comprehensive reference covers all configuration options available in Solana Recover, a production-ready, high-performance system. Includes server settings, database configuration, RPC endpoints, wallet integrations, performance tuning, and enterprise security settings.
 
 ## Table of Contents
 
@@ -178,11 +178,19 @@ buffer_size = 8192
 enable_zero_copy = true
 memory_allocator = "jemalloc"
 
+[turnkey]
+api_url = "https://api.turnkey.com"
+organization_id = "${TURNKEY_ORG_ID}"
+api_key = "${TURNKEY_API_KEY}"
+private_key_id = "${TURNKEY_PRIVATE_KEY_ID}"
+
 [features]
 api_server_enabled = true
 cli_enabled = true
 batch_processing_enabled = true
 webhooks_enabled = true
+turnkey_integration_enabled = true
+wallet_management_enabled = true
 experimental_features = false
 ```
 
@@ -230,7 +238,10 @@ experimental_features = false
 |----------|-------------|---------|---------|
 | `JWT_SECRET` | JWT signing secret | - | `your-super-secret-jwt-key` |
 | `API_KEY_ENCRYPTION_KEY` | API key encryption key | - | `your-32-character-key` |
-| `CORS_ORIGINS` | Comma-separated CORS origins | `*` | `https://yourdomain.com,https://app.yourdomain.com` |
+| `TURNKEY_API_URL` | Turnkey API URL | `https://api.turnkey.com` | `https://api.turnkey.com` |
+| `TURNKEY_ORG_ID` | Turnkey organization ID | - | `your-org-id` |
+| `TURNKEY_API_KEY` | Turnkey API key | - | `your-api-key` |
+| `TURNKEY_PRIVATE_KEY_ID` | Turnkey private key ID | - | `your-key-id` |
 
 ## Server Configuration
 

@@ -1,12 +1,13 @@
 # Troubleshooting Guide
 
-This guide helps you diagnose and resolve common issues with Solana Recover. It covers installation problems, runtime errors, performance issues, and frequently asked questions.
+This guide helps you diagnose and resolve common issues with Solana Recover, a production-ready, high-performance system for scanning Solana wallets and recovering SOL. It covers installation problems, runtime errors, performance issues, wallet integration problems, and frequently asked questions.
 
 ## Table of Contents
 
 - [Common Issues](#common-issues)
-- [Installation Problems](#installation-problems)
-- [Runtime Errors](#runtime-errors)
+- [Wallet Connection Issues](#wallet-connection-issues)
+- [Turnkey Integration Problems](#turnkey-integration-problems)
+- [Authentication Problems](#authentication-problems)
 - [Performance Issues](#performance-issues)
 - [Network and RPC Issues](#network-and-rpc-issues)
 - [Database Issues](#database-issues)

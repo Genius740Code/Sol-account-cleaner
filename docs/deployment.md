@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers deploying Solana Recover to production environments, including Docker, Kubernetes, cloud platforms, and on-premises setups.
+This guide covers deploying Solana Recover to production environments. Solana Recover is a production-ready, high-performance system for scanning Solana wallets and recovering SOL from empty token accounts, with full Turnkey integration and enterprise-grade security.
 
 ## Table of Contents
 
@@ -113,6 +113,12 @@ SOLANA_RPC_ENDPOINTS=https://api.mainnet-beta.solana.com,https://solana-api.proj
 SOLANA_RPC_POOL_SIZE=50
 SOLANA_RPC_TIMEOUT_MS=5000
 SOLANA_RPC_RATE_LIMIT_RPS=100
+
+# Turnkey Configuration
+TURNKEY_API_URL=https://api.turnkey.com
+TURNKEY_ORG_ID=your-org-id
+TURNKEY_API_KEY=your-api-key
+TURNKEY_PRIVATE_KEY_ID=your-key-id
 
 # Security Configuration
 JWT_SECRET=your-super-secret-jwt-key
