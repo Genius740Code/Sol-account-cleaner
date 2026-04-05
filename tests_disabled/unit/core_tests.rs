@@ -167,14 +167,14 @@ fn test_batch_scan_request_creation() {
 #[test]
 fn test_rpc_endpoint_creation() {
     let endpoint = RpcEndpoint {
-        url: "https://api.mainnet-beta.solana.com".to_string(),
+        url: "config_endpoint".to_string(),
         priority: 1,
         rate_limit_rps: 100,
         timeout_ms: 5000,
         healthy: true,
     };
 
-    assert_eq!(endpoint.url, "https://api.mainnet-beta.solana.com");
+    assert_eq!(endpoint.url, "config_endpoint");
     assert_eq!(endpoint.priority, 1);
     assert_eq!(endpoint.rate_limit_rps, 100);
     assert_eq!(endpoint.timeout_ms, 5000);

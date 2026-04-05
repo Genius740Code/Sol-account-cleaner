@@ -123,7 +123,11 @@ impl Default for ServerConfig {
 impl Default for RpcConfig {
     fn default() -> Self {
         Self {
-            endpoints: vec!["https://api.mainnet-beta.solana.com".to_string()],
+            endpoints: vec![
+                "https://api.mainnet-beta.solana.com".to_string(),
+                "https://solana-api.projectserum.com".to_string(),
+                "https://rpc.ankr.com/solana".to_string(),
+            ],
             pool_size: 10,
             timeout_ms: 5000,
             rate_limit_rps: 100,

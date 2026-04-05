@@ -207,8 +207,8 @@ fn test_structured_logger_functions() {
     StructuredLogger::log_wallet_scan_error("test_address", "test_scan_id", "test error");
     StructuredLogger::log_batch_scan_start("test_batch", 10);
     StructuredLogger::log_batch_scan_complete("test_batch", 5000, 8, 2, 0.5);
-    StructuredLogger::log_rpc_request("https://api.mainnet-beta.solana.com", "getAccountInfo", 100);
-    StructuredLogger::log_rpc_error("https://api.mainnet-beta.solana.com", "getAccountInfo", "timeout");
+    StructuredLogger::log_rpc_request("config_endpoint", "getAccountInfo", 100);
+    StructuredLogger::log_rpc_error("config_endpoint", "getAccountInfo", "timeout");
     StructuredLogger::log_api_request("GET", "/api/v1/scan", 200, 50);
     StructuredLogger::log_cache_hit("test_key");
     StructuredLogger::log_cache_miss("test_key");

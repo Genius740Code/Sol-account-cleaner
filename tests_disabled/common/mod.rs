@@ -12,7 +12,7 @@ pub fn create_test_config() -> Config {
             workers: 4,
         },
         rpc: solana_recover::RpcConfig {
-            endpoints: vec!["https://api.mainnet-beta.solana.com".to_string()],
+            endpoints: vec!["config_endpoint".to_string()],
             pool_size: 5,
             timeout_ms: 5000,
             rate_limit_rps: 100,

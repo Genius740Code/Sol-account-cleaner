@@ -236,7 +236,7 @@ impl ConnectionPoolTrait for ConnectionPool {
         let wrapper = self.get_client().await?;
         Ok(Arc::try_unwrap(wrapper).unwrap_or_else(|_| {
             // If unwrap fails, create a new wrapper
-            RpcClientWrapper::from_url("https://api.mainnet-beta.solana.com", 5000).unwrap()
+            RpcClientWrapper::from_url("config_endpoint", 5000).unwrap()
         }))
     }
 }
