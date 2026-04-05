@@ -100,7 +100,7 @@ Check if the API service is healthy and operational.
 ```json
 {
   "status": "healthy",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "timestamp": "2024-01-15T10:30:00Z",
   "services": {
     "database": "healthy",

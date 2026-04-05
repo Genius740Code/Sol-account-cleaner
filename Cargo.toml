@@ -1,13 +1,13 @@
 [package]
 name = "solana-recover"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Genius740CODE <contact@genius740code.com>"]
 license = "MIT"
 description = "A high-performance Solana wallet scanner and SOL recovery library"
-repository = "https://github.com/your-org/solana-recover"
+repository = "https://github.com/Genius740CODE/solana-recover"
 documentation = "https://docs.rs/solana-recover"
-homepage = "https://github.com/your-org/solana-recover"
+homepage = "https://github.com/Genius740CODE/solana-recover"
 keywords = ["solana", "blockchain", "wallet", "recovery", "scanner"]
 categories = ["cryptography::cryptocurrencies", "api-bindings", "web-programming::http-client"]
 readme = "README.md"

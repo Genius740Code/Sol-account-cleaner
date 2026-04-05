@@ -509,8 +509,8 @@ We use [Semantic Versioning](https://semver.org/):
 
 3. **Tag Release**
    ```bash
-   git tag -a v0.1.0 -m "Release v0.1.0"
-   git push upstream v0.1.0
+   git tag -a v1.0.0 -m "Release v1.0.0"
+   git push upstream v1.0.0
    ```
 
 4. **Publish**
