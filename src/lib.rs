@@ -8,11 +8,12 @@ pub mod utils;
 
 // Re-export core types and functions
 pub use core::{
-    types::{WalletInfo, EmptyAccount, ScanResult, ScanStatus, BatchScanRequest, BatchScanResult, RpcEndpoint, FeeStructure, User, ScanMetrics},
+    types::{WalletInfo, EmptyAccount, ScanResult, ScanStatus, BatchScanRequest, BatchScanResult, RpcEndpoint, FeeStructure, User, ScanMetrics, RecoveryRequest, RecoveryResult, RecoveryTransaction, RecoveryStatus, TransactionStatus, RecoveryConfig},
     errors::{SolanaRecoverError, Result},
     scanner::WalletScanner,
     processor::BatchProcessor,
     fee_calculator::{FeeCalculator, FeeCalculation, BatchFeeCalculation},
+    recovery::RecoveryManager,
 };
 
 // Re-export RPC functionality

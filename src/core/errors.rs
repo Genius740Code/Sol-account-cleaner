@@ -8,6 +8,12 @@ pub enum SolanaRecoverError {
     #[error("Invalid wallet address: {0}")]
     InvalidWalletAddress(String),
     
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+    
+    #[error("No recoverable funds: {0}")]
+    NoRecoverableFunds(String),
+    
     #[error("Rate limit exceeded: {0}")]
     RateLimitExceeded(String),
     
@@ -24,7 +30,7 @@ pub enum SolanaRecoverError {
     StorageError(String),
     
     #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    SerializationError(String),
     
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
@@ -52,6 +58,9 @@ pub enum SolanaRecoverError {
     
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
+    
+    #[error("Transaction error: {0}")]
+    TransactionError(String),
     
     #[error("Internal error: {0}")]
     InternalError(String),

@@ -7,6 +7,7 @@ A high-performance, scalable system for finding and managing empty Solana token 
 - **High Performance**: Multi-threaded processing capable of scanning 1000+ wallets concurrently
 - **Connection Pooling**: Efficient RPC connection management with health checking
 - **Batch Processing**: Process large batches of wallets with parallel execution
+- **SOL Recovery**: Automated recovery of SOL from empty accounts with wallet integration
 - **Rate Limiting**: Built-in rate limiting to respect RPC provider limits
 - **Enterprise Ready**: Fee structures, user management, and API access
 - **Wallet Integrations**: Support for Turnkey, Phantom, Solflare, and more
@@ -17,6 +18,7 @@ A high-performance, scalable system for finding and managing empty Solana token 
 
 ### For Individual Users
 - Quick wallet scanning to recover unused SOL
+- Automated SOL recovery from empty accounts
 - Simple CLI interface for immediate results
 - Free to use and open source
 
@@ -26,6 +28,7 @@ A high-performance, scalable system for finding and managing empty Solana token 
 - Batch processing for customer wallets
 - API access for developers
 - Enterprise features and support
+- Automated recovery services for customers
 
 ## 🏗️ Architecture
 
@@ -88,6 +91,16 @@ solana-recover scan 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
 # Scan multiple wallets
 solana-recover batch-scan wallets.txt
 
+# Recover SOL from empty accounts
+solana-recover recover \
+  --wallet-address 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM \
+  --destination EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
+  --accounts-file empty_accounts.txt \
+  --connection-id wallet-conn-123
+
+# Estimate recovery fees
+solana-recover estimate-fees --accounts-file empty_accounts.txt
+
 # Start API server
 solana-recover server --port 8080
 ```
@@ -118,6 +131,14 @@ retry_delay_ms = 1000
 default_percentage = 0.15
 minimum_lamports = 1000000
 waive_below_lamports = 10000000
+
+[recovery]
+max_accounts_per_transaction = 20
+priority_fee_lamports = 1000000
+max_fee_lamports = 5000000
+confirmation_timeout_seconds = 120
+retry_attempts = 3
+min_balance_lamports = 5000
 ```
 
 ## 📊 API Usage
@@ -140,6 +161,27 @@ curl -X POST http://localhost:8080/api/v1/batch-scan \
     ],
     "fee_percentage": 0.15
   }'
+
+# Recover SOL
+curl -X POST http://localhost:8080/api/v1/recover \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wallet_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "empty_accounts": [
+      "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef",
+      "BcDeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdef"
+    ],
+    "destination_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "wallet_connection_id": "conn-123456"
+  }'
+
+# Estimate recovery fees
+curl -X POST http://localhost:8080/api/v1/estimate-fees \
+  -H "Content-Type: application/json" \
+  -d '[
+    "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef",
+    "BcDeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdef"
+  ]'
 ```
 
 ### Response Format

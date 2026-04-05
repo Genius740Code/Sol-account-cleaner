@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use solana_recover::{
     Config, WalletScanner, ConnectionPool, BatchProcessor, 
-    CacheManager, SqlitePersistenceManager, RpcEndpoint
+    CacheManager, SqlitePersistenceManager, RpcEndpoint, RecoveryManager, RecoveryConfig
 };
 use solana_recover::wallet::WalletManager;
 use std::sync::Arc;
@@ -45,6 +45,42 @@ enum Commands {
         /// Output directory for results
         #[arg(short, long, default_value = "./results")]
         output: String,
+    },
+    /// Recover SOL from empty accounts
+    Recover {
+        /// Wallet address containing empty accounts
+        #[arg(help = "Source wallet address")]
+        wallet_address: String,
+        
+        /// Destination wallet address
+        #[arg(help = "Destination wallet address")]
+        destination: String,
+        
+        /// File containing empty account addresses (one per line)
+        #[arg(help = "Path to file with empty account addresses")]
+        accounts_file: String,
+        
+        /// Wallet connection ID for signing
+        #[arg(long)]
+        connection_id: Option<String>,
+        
+        /// Maximum fee in lamports
+        #[arg(long)]
+        max_fee: Option<u64>,
+        
+        /// Priority fee in lamports
+        #[arg(long)]
+        priority_fee: Option<u64>,
+        
+        /// Output format (json, table)
+        #[arg(short, long, default_value = "table")]
+        format: String,
+    },
+    /// Estimate recovery fees
+    EstimateFees {
+        /// File containing empty account addresses (one per line)
+        #[arg(help = "Path to file with empty account addresses")]
+        accounts_file: String,
     },
     /// Start the API server
     Server {
@@ -113,6 +149,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(cache_manager.clone()),
         Some(persistence_manager.clone()),
         config.scanner.clone().into(),
+    ));
+    
+    let recovery_config = RecoveryConfig::default();
+    let recovery_manager = Arc::new(RecoveryManager::new(
+        connection_pool.clone(),
+        wallet_manager.clone(),
+        recovery_config,
     ));
     
     // Execute command
@@ -203,6 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let api_state = solana_recover::api::server::ApiState {
                 scanner: scanner.clone(),
                 batch_processor: batch_processor.clone(),
+                recovery_manager: recovery_manager.clone(),
                 wallet_manager: wallet_manager.clone(),
                 cache_manager: cache_manager.clone(),
                 persistence_manager: persistence_manager.clone(),
@@ -225,6 +269,96 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if show {
                 println!("Current Configuration:");
                 println!("{}", serde_json::to_string_pretty(&config)?);
+            }
+        }
+        
+        Commands::Recover { 
+            wallet_address, 
+            destination, 
+            accounts_file, 
+            connection_id, 
+            max_fee, 
+            priority_fee, 
+            format 
+        } => {
+            info!("Starting SOL recovery for wallet: {}", wallet_address);
+            
+            // Read empty account addresses from file
+            let empty_accounts = std::fs::read_to_string(&accounts_file)?
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.trim().to_string())
+                .collect::<Vec<String>>();
+            
+            if empty_accounts.is_empty() {
+                warn!("No empty account addresses found in file: {}", accounts_file);
+                return Ok(());
+            }
+            
+            info!("Found {} empty accounts to recover", empty_accounts.len());
+            
+            // Create recovery request
+            let recovery_request = solana_recover::RecoveryRequest {
+                id: uuid::Uuid::new_v4(),
+                wallet_address,
+                empty_accounts,
+                destination_address: destination,
+                wallet_connection_id: connection_id,
+                max_fee_lamports: max_fee,
+                priority_fee_lamports: priority_fee,
+                user_id: Some("cli_user".to_string()),
+                created_at: chrono::Utc::now(),
+            };
+            
+            // Validate request
+            recovery_manager.validate_recovery_request(&recovery_request).await?;
+            
+            // Execute recovery
+            match recovery_manager.recover_sol(&recovery_request).await {
+                Ok(result) => {
+                    match format.as_str() {
+                        "json" => {
+                            println!("{}", serde_json::to_string_pretty(&result)?);
+                        }
+                        "table" => {
+                            print_recovery_result(&result);
+                        }
+                        _ => {
+                            error!("Unsupported format: {}", format);
+                            return Err("Unsupported format".into());
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Recovery failed: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        
+        Commands::EstimateFees { accounts_file } => {
+            info!("Estimating recovery fees for accounts in: {}", accounts_file);
+            
+            // Read empty account addresses from file
+            let empty_accounts = std::fs::read_to_string(&accounts_file)?
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.trim().to_string())
+                .collect::<Vec<String>>();
+            
+            if empty_accounts.is_empty() {
+                warn!("No empty account addresses found in file: {}", accounts_file);
+                return Ok(());
+            }
+            
+            match recovery_manager.estimate_recovery_fees(&empty_accounts).await {
+                Ok(fees) => {
+                    println!("Estimated recovery fees: {} lamports ({:.9} SOL)", fees, fees as f64 / 1_000_000_000.0);
+                }
+                Err(e) => {
+                    error!("Fee estimation failed: {}", e);
+                    return Err(e.into());
+                }
             }
         }
     }
@@ -298,5 +432,47 @@ fn print_batch_summary(result: &solana_recover::BatchScanResult) {
     
     println!("Total recoverable SOL: {:.9}", total_recoverable);
     println!("Duration: {:?}ms", result.duration_ms);
+    println!("============================================");
+}
+
+fn print_recovery_result(result: &solana_recover::RecoveryResult) {
+    println!("============================================");
+    println!(" Recovery Results");
+    println!("============================================");
+    println!("Recovery ID:  {}", result.id);
+    println!("Wallet:       {}", result.wallet_address);
+    println!("Status:       {:?}", result.status);
+    println!("Created:      {}", result.created_at);
+    
+    if let Some(completed_at) = result.completed_at {
+        println!("Completed:    {}", completed_at);
+    }
+    
+    if let Some(duration) = result.duration_ms {
+        println!("Duration:     {}ms", duration);
+    }
+    
+    println!();
+    println!("Accounts recovered: {}", result.total_accounts_recovered);
+    println!("Total recovered:    {:.9} SOL  ({} lamports)", 
+             result.net_sol, result.net_lamports);
+    println!("Total fees paid:    {:.9} SOL  ({} lamports)", 
+             result.total_fees_paid as f64 / 1_000_000_000.0, result.total_fees_paid);
+    
+    if !result.transactions.is_empty() {
+        println!("\nTransactions:");
+        for (i, tx) in result.transactions.iter().enumerate() {
+            println!("  {}. {} - {} accounts, {:.9} SOL recovered", 
+                     i + 1, 
+                     tx.transaction_signature.chars().take(16).collect::<String>() + "...",
+                     tx.accounts_recovered.len(),
+                     tx.lamports_recovered as f64 / 1_000_000_000.0);
+        }
+    }
+    
+    if let Some(error) = &result.error {
+        println!("\nError: {}", error);
+    }
+    
     println!("============================================");
 }

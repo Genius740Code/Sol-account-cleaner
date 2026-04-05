@@ -373,6 +373,152 @@ Register a webhook to receive scan completion notifications.
 }
 ```
 
+---
+
+### SOL Recovery
+
+#### POST /api/v1/recover
+
+Recover SOL from empty accounts for a wallet.
+
+**Request Body:**
+```json
+{
+  "wallet_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  "empty_accounts": [
+    "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef",
+    "BcDeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdef"
+  ],
+  "destination_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "wallet_connection_id": "conn-123456",
+  "max_fee_lamports": 5000000,
+  "priority_fee_lamports": 1000000,
+  "user_id": "user-789"
+}
+```
+
+**Parameters:**
+- `wallet_address` (string, required): Source wallet address
+- `empty_accounts` (array, required): Array of empty account addresses to recover
+- `destination_address` (string, required): Destination wallet for recovered SOL
+- `wallet_connection_id` (string, optional): Wallet connection ID for signing
+- `max_fee_lamports` (integer, optional): Maximum fee in lamports
+- `priority_fee_lamports` (integer, optional): Priority fee in lamports
+- `user_id` (string, optional): User identifier
+
+**Response:**
+```json
+{
+  "id": "recovery-550e8400-e29b-41d4-a716-446655440000",
+  "recovery_request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "wallet_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  "status": "completed",
+  "total_accounts_recovered": 2,
+  "total_lamports_recovered": 2039280,
+  "total_fees_paid": 5000,
+  "net_lamports": 2034280,
+  "net_sol": 0.00203428,
+  "transactions": [
+    {
+      "id": "tx-550e8400-e29b-41d4-a716-446655440000",
+      "recovery_request_id": "550e8400-e29b-41d4-a716-446655440000",
+      "transaction_signature": "mock_signature_550e8400e29b41d4a716446655440000",
+      "accounts_recovered": [
+        "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef",
+        "BcDeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdef"
+      ],
+      "lamports_recovered": 2039280,
+      "fee_paid": 5000,
+      "status": "confirmed",
+      "created_at": "2024-01-15T10:30:00Z",
+      "signed_at": "2024-01-15T10:30:15Z",
+      "confirmed_at": "2024-01-15T10:31:25Z"
+    }
+  ],
+  "created_at": "2024-01-15T10:30:00Z",
+  "completed_at": "2024-01-15T10:31:25Z",
+  "duration_ms": 85000
+}
+```
+
+**Status Codes:**
+- `200 OK`: Recovery completed successfully
+- `400 Bad Request`: Invalid request parameters
+- `401 Unauthorized`: Invalid wallet connection
+- `402 Payment Required`: Insufficient funds for fees
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+### Estimate Recovery Fees
+
+#### POST /api/v1/estimate-fees
+
+Estimate fees for recovering SOL from empty accounts.
+
+**Request Body:**
+```json
+[
+  "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef",
+  "BcDeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdef"
+]
+```
+
+**Parameters:**
+- Array of empty account addresses to estimate fees for
+
+**Response:**
+```json
+{
+  "estimated_fees_lamports": 10000,
+  "estimated_fees_sol": 0.00001,
+  "accounts_count": 2,
+  "fee_per_account_lamports": 5000
+}
+```
+
+---
+
+### Recovery Status
+
+#### GET /api/v1/recovery/{recovery_id}
+
+Get the status of a recovery operation.
+
+**Parameters:**
+- `recovery_id` (string, required): Recovery ID returned from recover endpoint
+
+**Response:**
+```json
+{
+  "id": "recovery-550e8400-e29b-41d4-a716-446655440000",
+  "recovery_request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "wallet_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  "status": "completed",
+  "total_accounts_recovered": 2,
+  "total_lamports_recovered": 2039280,
+  "total_fees_paid": 5000,
+  "net_lamports": 2034280,
+  "net_sol": 0.00203428,
+  "transactions": [
+    // Transaction details
+  ],
+  "created_at": "2024-01-15T10:30:00Z",
+  "completed_at": "2024-01-15T10:31:25Z",
+  "duration_ms": 85000
+}
+```
+
+**Recovery Status Values:**
+- `pending`: Recovery is queued
+- `building`: Building recovery transactions
+- `signing`: Signing transactions
+- `submitting`: Submitting to blockchain
+- `completed`: Recovery finished successfully
+- `failed`: Recovery failed
+
+---
+
 ## Error Handling
 
 ### Error Response Format
