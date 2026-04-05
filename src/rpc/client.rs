@@ -5,9 +5,8 @@ use solana_sdk::{pubkey::Pubkey, commitment_config::CommitmentConfig};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-#[derive(Clone)]
 pub struct RpcClientWrapper {
-    pub client: Arc<RpcClient>,
+    client: Arc<RpcClient>,
     rate_limiter: Arc<dyn RateLimiter>,
     request_timeout: Duration,
 }
@@ -73,20 +72,20 @@ impl RpcClientWrapper {
         let pubkey = *pubkey;
         let timeout = self.request_timeout;
         
-        tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            Ok(client.get_balance_with_commitment(&pubkey, CommitmentConfig::confirmed())
-            .map_err(SolanaRecoverError::RpcClientError)?
-            .value)
+        Ok(tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+            client.get_balance_with_commitment(&pubkey, CommitmentConfig::confirmed())
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
+        .map_err(SolanaRecoverError::RpcClientError)?
+        .value)
     }
     
     pub async fn get_health(&self) -> Result<()> {
         let client = self.client.clone();
         let timeout = Duration::from_secs(5);
         
-        let _ = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+        tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
             client.get_latest_blockhash()
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Health check timeout".to_string()))?
@@ -95,7 +94,7 @@ impl RpcClientWrapper {
         Ok(())
     }
     
-    pub async fn get_account_info(&self, pubkey: &Pubkey) -> Result<solana_sdk::account::Account> {
+    pub async fn get_account_info(&self, pubkey: &Pubkey) -> Result<solana_account_decoder::UiAccount> {
         self.rate_limiter.acquire().await?;
         
         let client = self.client.clone();
@@ -109,12 +108,24 @@ impl RpcClientWrapper {
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
         .map_err(SolanaRecoverError::RpcClientError)?
         .value
-        .ok_or_else(|| SolanaRecoverError::RpcClientError(
-            std::io::Error::new(std::io::ErrorKind::Other, "Account not found".to_string()).into()
-        ))
+        .ok_or_else(|| SolanaRecoverError::InternalError("Account not found".to_string()))
+        .map(|account| {
+            // Create a simple UiAccount representation
+            solana_account_decoder::UiAccount {
+                lamports: account.lamports,
+                data: solana_account_decoder::UiAccountData::Binary(
+                    bs58::encode(&account.data).into_string(),
+                    solana_account_decoder::UiAccountEncoding::Base64
+                ),
+                owner: account.owner.to_string(),
+                executable: account.executable,
+                rent_epoch: account.rent_epoch,
+                space: Some(account.data.len() as u64),
+            }
+        })
     }
     
-    pub async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> Result<Vec<Option<solana_sdk::account::Account>>> {
+    pub async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> Result<Vec<Option<solana_account_decoder::UiAccount>>> {
         self.rate_limiter.acquire().await?;
         
         let client = self.client.clone();
@@ -127,28 +138,75 @@ impl RpcClientWrapper {
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
         .map_err(SolanaRecoverError::RpcClientError)?
-        .value)
+        .value
+        .into_iter()
+        .map(|account_opt| account_opt.map(|account| {
+            solana_account_decoder::UiAccount {
+                lamports: account.lamports,
+                data: solana_account_decoder::UiAccountData::Binary(
+                    bs58::encode(&account.data).into_string(),
+                    solana_account_decoder::UiAccountEncoding::Base64
+                ),
+                owner: account.owner.to_string(),
+                executable: account.executable,
+                rent_epoch: account.rent_epoch,
+                space: Some(account.data.len() as u64),
+            }
+        }))
+        .collect::<Vec<_>>())
     }
     
     pub async fn send_transaction(&self, transaction: &solana_sdk::transaction::Transaction) -> Result<String> {
-        // TODO: Implement proper transaction sending
-        // For now, serialize and send as bytes
-        let _transaction_data = bincode::serialize(transaction)
-            .map_err(|e| SolanaRecoverError::SerializationError(e.to_string()))?;
+        self.rate_limiter.acquire().await?;
         
-        // This is a simplified implementation
-        // In a real implementation, you'd use the RPC client's send_transaction method
-        Ok(format!("mock_signature_{}", uuid::Uuid::new_v4().to_string().replace("-", "")))
+        let client = self.client.clone();
+        let transaction = transaction.clone();
+        let timeout = self.request_timeout;
+        
+        let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+            client.send_and_confirm_transaction(&transaction)
+        })).await
+        .map_err(|_| SolanaRecoverError::NetworkError("Transaction timeout".to_string()))?
+        .map_err(|e| SolanaRecoverError::InternalError(format!("Task join error: {}", e)))?
+        .map_err(|e| SolanaRecoverError::RpcClientError(e))?;
+        
+        Ok(result.to_string())
     }
     
-    pub async fn get_signature_status_with_commitment(
-        &self, 
-        _signature: &solana_sdk::signature::Signature,
-        _commitment: solana_sdk::commitment_config::CommitmentConfig
-    ) -> Result<Option<bool>> {
-        // For now, return None as placeholder
-        // In a real implementation, you'd query the RPC client
-        Ok(None)
+    pub fn get_client(&self) -> Arc<RpcClient> {
+        self.client.clone()
+    }
+    
+    pub async fn get_signature_status_with_commitment(&self, signature: &str, commitment: CommitmentConfig) -> Result<Option<bool>> {
+        self.rate_limiter.acquire().await?;
+        
+        let client = self.client.clone();
+        let signature = signature.parse::<solana_sdk::signature::Signature>()
+            .map_err(|_| SolanaRecoverError::InvalidInput("Invalid signature".to_string()))?;
+        let timeout = self.request_timeout;
+        
+        let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+            client.get_signature_status_with_commitment(&signature, commitment)
+        })).await
+        .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
+        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
+        .map_err(SolanaRecoverError::RpcClientError)?;
+        
+        Ok(result.map(|status| status.is_ok()))
+    }
+    
+    pub async fn get_minimum_balance_for_rent_exemption(&self, data_size: usize) -> Result<u64> {
+        self.rate_limiter.acquire().await?;
+        
+        let client = self.client.clone();
+        let timeout = self.request_timeout;
+        
+        Ok(tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+            client.get_minimum_balance_for_rent_exemption(data_size)
+        })).await
+        .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
+        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
+        .map_err(SolanaRecoverError::RpcClientError)?)
     }
 }
 

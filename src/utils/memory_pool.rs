@@ -348,17 +348,17 @@ impl Default for BufferPool {
 }
 
 // Global memory manager instance
-lazy_static::lazy_static! {
-    pub static ref GLOBAL_MEMORY_MANAGER: Arc<MemoryManager> = Arc::new(MemoryManager::new());
-    pub static ref GLOBAL_BUFFER_POOL: Arc<BufferPool> = Arc::new(BufferPool::new());
-}
+use std::sync::OnceLock;
+
+static GLOBAL_MEMORY_MANAGER: OnceLock<Arc<MemoryManager>> = OnceLock::new();
+static GLOBAL_BUFFER_POOL: OnceLock<Arc<BufferPool>> = OnceLock::new();
 
 pub fn get_global_memory_manager() -> Arc<MemoryManager> {
-    GLOBAL_MEMORY_MANAGER.clone()
+    GLOBAL_MEMORY_MANAGER.get_or_init(|| Arc::new(MemoryManager::new())).clone()
 }
 
 pub fn get_global_buffer_pool() -> Arc<BufferPool> {
-    GLOBAL_BUFFER_POOL.clone()
+    GLOBAL_BUFFER_POOL.get_or_init(|| Arc::new(BufferPool::new())).clone()
 }
 
 #[cfg(test)]

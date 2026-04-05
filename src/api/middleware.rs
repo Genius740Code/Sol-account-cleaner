@@ -414,14 +414,8 @@ pub async fn logging_middleware(
     );
     
     // Record metrics
-    counter!("http.requests.total", 1, 
-        "method" => method.to_string(),
-        "status" => status.as_u16().to_string()
-    );
-    histogram!("http.request.duration_ms", duration.as_millis() as f64,
-        "method" => method.to_string(),
-        "status" => status.as_u16().to_string()
-    );
+    counter!("http_requests_total", 1);
+    histogram!("http_request_duration_ms", duration.as_millis() as f64);
     
     response
 }
@@ -432,14 +426,9 @@ pub fn cors_layer() -> tower_http::cors::CorsLayer {
     
     CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
         .allow_headers(Any)
-        .expose_headers([
-            "x-request-id",
-            "x-user-id", 
-            "x-user-email",
-            "content-length",
-        ].map(|s| s.parse::<axum::http::HeaderName>().unwrap()))
+        .allow_credentials(true)
 }
 
 // Compression middleware configuration

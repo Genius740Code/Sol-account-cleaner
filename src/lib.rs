@@ -41,40 +41,28 @@
 
 // Core dependencies
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+// Export core modules
+pub mod core;
+pub mod rpc;
+pub mod storage;
+pub mod wallet;
+pub mod utils;
+pub mod config;
+pub mod api;
+
+// Re-export commonly used types
+pub use core::*;
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Default RPC endpoint for mainnet - use config instead
-pub const DEFAULT_MAINNET_ENDPOINT: &str = "mainnet";
+/// Default RPC endpoint for mainnet
+pub const DEFAULT_MAINNET_ENDPOINT: &str = "https://api.mainnet-beta.solana.com";
 
-/// Core error types
-#[derive(Debug, thiserror::Error)]
-pub enum SolanaRecoverError {
-    #[error("Network error: {0}")]
-    NetworkError(String),
-    
-    #[error("Invalid wallet address: {0}")]
-    InvalidAddress(String),
-    
-    #[error("RPC error: {0}")]
-    RpcError(String),
-    
-    #[error("Timeout error")]
-    TimeoutError,
-    
-    #[error("Rate limit exceeded")]
-    RateLimitError,
-    
-    #[error("Serialization error: {0}")]
-    SerializationError(String),
-    
-    #[error("Internal error: {0}")]
-    InternalError(String),
-}
-
-/// Result type for the library
-pub type Result<T> = std::result::Result<T, SolanaRecoverError>;
+/// Default RPC endpoint for devnet
+pub const DEFAULT_DEVNET_ENDPOINT: &str = "https://api.devnet.solana.com";
 
 /// Represents an empty token account
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,37 +73,22 @@ pub struct EmptyAccount {
     pub mint: String,
     /// The owner address
     pub owner: String,
-    /// Balance in lamports
+    /// Balance in lamports (recoverable amount after rent exemption)
     pub lamports: u64,
 }
 
-/// Result of a wallet scan operation
-#[derive(Debug, Clone)]
-pub struct WalletScanResult {
-    /// Wallet address that was scanned
-    pub wallet_address: String,
-    /// Total number of accounts found
-    pub total_accounts: usize,
-    /// Number of empty accounts found
-    pub empty_accounts: Vec<EmptyAccount>,
-    /// Total recoverable SOL amount
-    pub recoverable_sol: f64,
-    /// Time taken for the scan in milliseconds
-    pub scan_time_ms: u64,
-}
-
-/// Convenience function for quick wallet scanning
+/// Convenience function for quick wallet scanning using the core scanner
 /// 
 /// This is the simplest way to scan a wallet for empty accounts.
 /// 
 /// # Arguments
 /// 
 /// * `wallet_address` - The Solana wallet address to scan
-/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet configuration)
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
 /// 
 /// # Returns
 /// 
-/// Returns a `WalletScanResult` containing the scan results.
+/// Returns a `WalletInfo` containing scan results.
 /// 
 /// # Example
 /// 
@@ -129,35 +102,88 @@ pub struct WalletScanResult {
 ///     Ok(())
 /// }
 /// ```
-#[cfg(feature = "scanner")]
 pub async fn scan_wallet(
     wallet_address: &str,
-    _rpc_endpoint: Option<&str>,
-) -> Result<WalletScanResult> {
-    // For now, return a mock result until the advanced scanner is properly integrated
-    let start_time = std::time::Instant::now();
+    rpc_endpoint: Option<&str>,
+) -> core::Result<WalletInfo> {
+    use rpc::ConnectionPool;
+    use core::RpcEndpoint;
     
-    // Basic validation
-    if wallet_address.len() != 44 {
-        return Err(SolanaRecoverError::InvalidAddress(wallet_address.to_string()));
-    }
-    
-    let result = WalletScanResult {
-        wallet_address: wallet_address.to_string(),
-        total_accounts: 25,
-        empty_accounts: vec![
-            EmptyAccount {
-                address: "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef".to_string(),
-                mint: "So11111111111111111111111111111111111111112".to_string(),
-                owner: wallet_address.to_string(),
-                lamports: 2039280,
-            },
-        ],
-        recoverable_sol: 0.00203928,
-        scan_time_ms: start_time.elapsed().as_millis() as u64,
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: 30000,
+        healthy: true,
     };
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 1));
+    let scanner = Arc::new(core::scanner::WalletScanner::new(connection_pool));
     
-    Ok(result)
+    scanner.scan_wallet(wallet_address).await.map(|scan_result| scan_result.result.unwrap())
+}
+
+/// Convenience function for SOL recovery using the core recovery manager
+/// 
+/// This is the simplest way to recover SOL from empty accounts.
+/// 
+/// # Arguments
+/// 
+/// * `request` - The recovery request containing wallet and destination info
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns a `RecoveryResult` containing recovery operation results.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::{recover_sol, RecoveryRequest};
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let request = RecoveryRequest {
+///         // ... populate request fields
+///         id: uuid::Uuid::new_v4(),
+///         wallet_address: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM".to_string(),
+///         destination_address: "destination_address_here".to_string(),
+///         empty_accounts: vec![],
+///         max_fee_lamports: Some(10_000_000),
+///         priority_fee_lamports: None,
+///         wallet_connection_id: None,
+///         user_id: None,
+///         created_at: chrono::Utc::now(),
+///     };
+///     
+///     let result = recover_sol(&request, None).await?;
+///     println!("Recovered {} SOL", result.net_sol);
+///     Ok(())
+/// }
+/// ```
+pub async fn recover_sol(
+    request: &RecoveryRequest,
+    rpc_endpoint: Option<&str>,
+) -> core::Result<RecoveryResult> {
+    use rpc::ConnectionPool;
+    use core::{RpcEndpoint, RecoveryManager, RecoveryConfig};
+    use wallet::WalletManager;
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: 30000,
+        healthy: true,
+    };
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 1));
+    
+    let config = RecoveryConfig::default();
+    let wallet_manager = Arc::new(WalletManager::new());
+    let recovery_manager = RecoveryManager::new(connection_pool, wallet_manager, config);
+    
+    recovery_manager.recover_sol(request).await
 }
 
 #[cfg(test)]
@@ -169,16 +195,9 @@ mod tests {
         assert!(!VERSION.is_empty());
     }
 
-    #[cfg(feature = "scanner")]
-    #[tokio::test]
-    async fn test_scan_wallet_function() {
-        // This is a basic test to ensure the function compiles
-        let result = scan_wallet("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None).await;
-        
-        // We expect this to succeed with our mock implementation
-        assert!(result.is_ok());
-        if let Ok(scan_result) = result {
-            assert_eq!(scan_result.wallet_address, "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
-        }
+    #[test]
+    fn test_default_endpoints() {
+        assert_eq!(DEFAULT_MAINNET_ENDPOINT, "https://api.mainnet-beta.solana.com");
+        assert_eq!(DEFAULT_DEVNET_ENDPOINT, "https://api.devnet.solana.com");
     }
 }

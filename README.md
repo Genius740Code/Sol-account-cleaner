@@ -174,6 +174,57 @@ minimum_lamports = 1000000
 
 ## 📊 Examples
 
+### Command Line Interface
+
+The CLI tool provides both simple and advanced commands for wallet scanning and SOL recovery:
+
+#### **Simple Usage (Recommended)**
+
+**Quick scan:**
+```bash
+solana-recover --wallet <ADDRESS>
+```
+
+**Scan and reclaim in one command:**
+```bash
+solana-recover --wallet <ADDRESS> --destination <DESTINATION>
+```
+
+#### **Advanced Usage**
+
+**Show total claimable SOL:**
+```bash
+solana-recover show --targets "wallet:addr1,addr2,addr3"
+solana-recover show --targets "key:privkey1,privkey2"
+```
+
+**Reclaim SOL:**
+```bash
+solana-recover reclaim --targets "wallet:addr1,addr2" --destination "destination_wallet_address"
+solana-recover reclaim --targets "key:privkey1,privkey2" --destination "dest_wallet_address"
+```
+
+**Batch processing:**
+```bash
+solana-recover batch wallets.txt
+```
+
+#### **Examples**
+
+```bash
+# Quick scan of a single wallet
+solana-recover --wallet B7bQUSYnD56Vk7jEAqU4MWLJQ9LgVnKyWskivPhZQcHg
+
+# Scan and immediately reclaim SOL
+solana-recover --wallet B7bQUSYnD56Vk7jEAqU4MWLJQ9LgVnKyWskivPhZQcHg --destination 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+
+# Show total from multiple wallets
+solana-recover show --targets "wallet:B7bQUSYnD56Vk7jEAqU4MWLJQ9LgVnKyWskivPhZQcHg,9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+
+# Force reclaim without confirmation
+solana-recover --wallet <ADDRESS> --destination <DEST> --force
+```
+
 ### Simple CLI Tool
 
 ```rust
@@ -207,6 +258,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Run with:
 ```bash
 cargo run --example simple_scan -- 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+```
+
+### SOL Recovery Example
+
+```rust
+// examples/recover_sol.rs
+use solana_recover::{recover_sol, RecoveryRequest};
+use uuid::Uuid;
+use chrono::Utc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let request = RecoveryRequest {
+        id: Uuid::new_v4(),
+        wallet_address: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM".to_string(),
+        empty_accounts: vec!["empty_account_address".to_string()],
+        destination_address: "destination_address".to_string(),
+        wallet_connection_id: Some("wallet_connection".to_string()),
+        max_fee_lamports: Some(5_000_000),
+        priority_fee_lamports: None,
+        user_id: None,
+        created_at: Utc::now(),
+    };
+    
+    let result = recover_sol(&request, None).await?;
+    println!("Recovered {} SOL", result.net_sol);
+    
+    Ok(())
+}
 ```
 
 ### Web Server (with `api` feature)
@@ -325,6 +405,44 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Solana Labs](https://solana.com/) for the amazing blockchain platform
 - The Rust community for excellent tooling and libraries
+
+## ❓ Frequently Asked Questions
+
+### Does the tool only close accounts with active positions or all accounts?
+
+The tool specifically targets **empty token accounts** only. Here's what that means:
+
+- **Empty Accounts**: Token accounts with a balance of 0 tokens but still holding rent exemption SOL (typically 2.228268 SOL per account)
+- **Active Positions**: Accounts with non-zero token balances are **never** closed or touched
+- **Safety First**: The scanner verifies each account has exactly 0 tokens before including it in recovery
+
+**What gets recovered:**
+- Rent exemption SOL from empty token accounts
+- Transaction fees are deducted from the recovered amount
+- Only accounts with 0 token balance are eligible
+
+**What's safe:**
+- Accounts with active token positions (any non-zero balance)
+- SOL accounts (native SOL accounts)
+- Accounts with delegated tokens or active stakes
+- NFTs or other assets with non-zero balances
+
+### Is it safe to use private keys with this tool?
+
+Yes, but with important considerations:
+
+- Private keys are only used to derive the public wallet address for scanning
+- For recovery operations, private keys are used to sign transactions locally
+- Keys are never transmitted to external services
+- Always ensure you're using a secure environment and backup your keys
+
+### What happens to the tokens in empty accounts?
+
+Empty accounts by definition have 0 tokens. The "empty" refers to the token balance being 0, not the account being completely devoid of value. These accounts still hold rent exemption SOL that can be recovered.
+
+### Can I recover SOL from accounts with small token balances?
+
+No. The tool only processes accounts with exactly 0 token balance. Accounts with any non-zero token balance (even very small amounts) are skipped to preserve your token positions.
 
 ---
 

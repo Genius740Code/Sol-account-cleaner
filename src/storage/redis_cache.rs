@@ -97,7 +97,7 @@ impl RedisCacheManager {
                 SolanaRecoverError::DatabaseError(format!("Redis get error: {}", e))
             })?;
         
-        if let Some(data_str) = result {
+        if let Some(data_str) = result.as_deref() {
             let entry: CacheEntry<T> = serde_json::from_str(&data_str)
                 .map_err(|e| {
                     warn!("Failed to deserialize cache entry for key '{}': {}", key, e);

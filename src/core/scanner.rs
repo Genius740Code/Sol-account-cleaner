@@ -109,12 +109,28 @@ impl WalletScanner {
                                 .and_then(|m| m.as_str())
                                 .map(|m| m.to_string());
 
-                            return Ok(Some(EmptyAccount {
-                                address: keyed_account.pubkey.to_string(),
-                                lamports: keyed_account.account.lamports,
-                                owner,
-                                mint,
-                            }));
+                            // Get rent exemption amount for token accounts
+                            // Token accounts are typically 165 bytes in size
+                            let rent_exemption = self.connection_pool.get_client().await?
+                                .get_minimum_balance_for_rent_exemption(165).await
+                                .unwrap_or(2_039_280); // Fallback to common value
+
+                            let total_balance = keyed_account.account.lamports;
+                            let recoverable_amount = if total_balance > rent_exemption {
+                                total_balance - rent_exemption
+                            } else {
+                                0
+                            };
+
+                            // Only include account if there's actually recoverable SOL
+                            if recoverable_amount > 0 {
+                                return Ok(Some(EmptyAccount {
+                                    address: keyed_account.pubkey.to_string(),
+                                    lamports: recoverable_amount, // Use recoverable amount, not total balance
+                                    owner,
+                                    mint,
+                                }));
+                            }
                         }
                     }
                 }

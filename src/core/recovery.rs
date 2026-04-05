@@ -98,7 +98,17 @@ impl RecoveryManager {
         };
 
         // Validate destination address with enhanced security
-        let destination_pubkey = self.validate_destination_address(&request.destination_address)?;
+        // For SOL recovery, if destination is not explicitly specified by user, default to wallet address
+        let destination_address = if request.destination_address.is_empty() || 
+                                   request.destination_address == "auto" ||
+                                   request.destination_address == request.wallet_address {
+            info!("Defaulting destination to user wallet: {}", request.wallet_address);
+            &request.wallet_address
+        } else {
+            &request.destination_address
+        };
+        
+        let destination_pubkey = self.validate_destination_address(destination_address)?;
 
         // Group accounts into batches for transactions
         let account_batches = self.group_accounts_for_recovery(&request.empty_accounts)?;
@@ -237,11 +247,15 @@ impl RecoveryManager {
 
         // Get recent blockhash
         let _recent_blockhash = {
-            let client = rpc_client.client.clone();
+            let client = rpc_client.get_client();
             tokio::task::spawn_blocking(move || {
                 client.get_latest_blockhash()
             }).await.map_err(|e| SolanaRecoverError::InternalError(format!("Task join error: {}", e)))??
         };
+
+        // Get rent exemption amount for token accounts (typically 165 bytes)
+        let rent_exemption = rpc_client.get_minimum_balance_for_rent_exemption(165).await
+            .unwrap_or(2_039_280); // Fallback to common value
 
         // Create transfer instructions for each empty account
         for account_address in accounts {
@@ -253,15 +267,22 @@ impl RecoveryManager {
             // Get account balance
             let balance = rpc_client.get_balance(&pubkey).await?;
             
-            if balance >= self.config.min_balance_lamports {
-                _total_balance += balance;
+            // Calculate recoverable amount (balance minus rent exemption)
+            let recoverable_amount = if balance > rent_exemption {
+                balance - rent_exemption
+            } else {
+                0
+            };
+            
+            if recoverable_amount >= self.config.min_balance_lamports {
+                _total_balance += recoverable_amount;
                 
-                // Create transfer instruction
+                // Create transfer instruction with recoverable amount
                 instructions.push(
                     system_instruction::transfer(
                         &pubkey,
                         &destination,
-                        balance,
+                        recoverable_amount,
                     )
                 );
             }
@@ -269,7 +290,7 @@ impl RecoveryManager {
 
         if instructions.is_empty() {
             return Err(SolanaRecoverError::NoRecoverableFunds(
-                "No accounts with sufficient balance found".to_string()
+                "No accounts with sufficient recoverable balance found".to_string()
             ));
         }
 
@@ -496,6 +517,10 @@ impl RecoveryManager {
         let mut total_balance = 0u64;
         let mut valid_accounts = 0u64;
 
+        // Get rent exemption amount for token accounts (typically 165 bytes)
+        let rent_exemption = rpc_client.get_minimum_balance_for_rent_exemption(165).await
+            .unwrap_or(2_039_280); // Fallback to common value
+
         for account_address in accounts {
             let pubkey = account_address.parse::<Pubkey>()
                 .map_err(|_| SolanaRecoverError::InvalidInput(
@@ -505,8 +530,15 @@ impl RecoveryManager {
             // Get account info with commitment level
             let account = rpc_client.get_account_info(&pubkey).await?;
             
-            if account.lamports >= self.config.min_balance_lamports {
-                total_balance += account.lamports;
+            // Calculate recoverable amount (balance minus rent exemption)
+            let recoverable_amount = if account.lamports > rent_exemption {
+                account.lamports - rent_exemption
+            } else {
+                0
+            };
+            
+            if recoverable_amount >= self.config.min_balance_lamports {
+                total_balance += recoverable_amount;
                 valid_accounts += 1;
             }
         }
@@ -525,7 +557,7 @@ impl RecoveryManager {
         
         while start.elapsed() < timeout {
             match rpc_client.get_signature_status_with_commitment(
-                signature,
+                &signature.to_string(),
                 CommitmentConfig::confirmed()
             ).await? {
                 Some(confirmed) => {
