@@ -14,8 +14,8 @@ pub enum SolanaRecoverError {
     #[error("No recoverable funds: {0}")]
     NoRecoverableFunds(String),
     
-    #[error("Rate limit exceeded: {0}")]
-    RateLimitExceeded(String),
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded,
     
     #[error("Connection pool exhausted")]
     ConnectionPoolExhausted,
@@ -64,6 +64,12 @@ pub enum SolanaRecoverError {
     
     #[error("Internal error: {0}")]
     InternalError(String),
+    
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    
+    #[error("Database error: {0}")]
+    RusqliteError(#[from] rusqlite::Error),
 }
 
 pub type Result<T> = std::result::Result<T, SolanaRecoverError>;

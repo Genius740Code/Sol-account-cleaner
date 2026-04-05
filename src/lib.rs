@@ -32,4 +32,6 @@ pub use config::{Config, ServerConfig, RpcConfig, ScannerConfig, CacheConfig as 
 pub use storage::{CacheManager, PersistenceManager, SqlitePersistenceManager, CacheConfig, DatabaseConfig};
 
 // Re-export utils functionality
-pub use utils::{MetricsCollector, MetricsConfig, Logger, LoggingConfig, StructuredLogger};
+pub use utils::{Logger, LoggingConfig, StructuredLogger};
+pub use utils::metrics::MetricsCollector;
+pub use utils::metrics::MetricsConfig;

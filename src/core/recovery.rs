@@ -171,10 +171,10 @@ impl RecoveryManager {
         rpc_client: &RpcClient,
     ) -> Result<Transaction> {
         let mut instructions = Vec::new();
-        let mut total_balance = 0u64;
+        let mut _total_balance = 0u64;
 
         // Get recent blockhash
-        let recent_blockhash = rpc_client.get_latest_blockhash()?;
+        let _recent_blockhash = rpc_client.get_latest_blockhash()?;
 
         // Create transfer instructions for each empty account
         for account_address in accounts {
@@ -187,7 +187,7 @@ impl RecoveryManager {
             let balance = rpc_client.get_balance(&pubkey)?;
             
             if balance >= self.config.min_balance_lamports {
-                total_balance += balance;
+                _total_balance += balance;
                 
                 // Create transfer instruction
                 instructions.push(

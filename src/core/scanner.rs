@@ -1,21 +1,21 @@
-use crate::core::{WalletInfo, EmptyAccount, Result, SolanaRecoverError, ScanResult, ScanStatus};
-use crate::rpc::{ConnectionPool, RpcClientWrapper};
+use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount};
+use crate::rpc::ConnectionPoolTrait;
 use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Instant;
 use uuid::Uuid;
+use std::time::Instant;
 use chrono::Utc;
+use std::str::FromStr;
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 
 #[derive(Clone)]
 pub struct WalletScanner {
-    connection_pool: Arc<ConnectionPool>,
+    connection_pool: Arc<dyn ConnectionPoolTrait>,
 }
 
 impl WalletScanner {
-    pub fn new(connection_pool: Arc<ConnectionPool>) -> Self {
+    pub fn new(connection_pool: Arc<dyn ConnectionPoolTrait>) -> Self {
         Self { connection_pool }
     }
 
@@ -49,17 +49,13 @@ impl WalletScanner {
         }
     }
 
-    async fn scan_wallet_internal(&self, wallet_address: &str) -> Result<WalletInfo> {
+    pub async fn scan_wallet_internal(&self, wallet_address: &str) -> Result<WalletInfo> {
         let pubkey = Pubkey::from_str(wallet_address)
             .map_err(|_| SolanaRecoverError::InvalidWalletAddress(wallet_address.to_string()))?;
 
         let client = self.connection_pool.get_client().await?;
-        let rate_limiter = std::sync::Arc::new(
-            crate::rpc::TokenBucketRateLimiter::new(10)
-        );
-        let wrapper = RpcClientWrapper::new(client, rate_limiter);
 
-        let token_accounts = wrapper.get_token_accounts(&pubkey).await?;
+        let token_accounts = client.get_token_accounts(&pubkey).await?;
         let total_accounts = token_accounts.len();
 
         let mut empty_accounts: Vec<EmptyAccount> = Vec::new();

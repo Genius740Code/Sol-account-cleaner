@@ -299,6 +299,7 @@ impl MetricsCollector {
 }
 
 pub struct TimerScope<'a> {
+    #[allow(dead_code)]
     collector: &'a MetricsCollector,
     name: &'a str,
     labels: Option<HashMap<String, String>>,

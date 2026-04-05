@@ -1,9 +1,11 @@
 use crate::core::{RpcEndpoint, Result, SolanaRecoverError};
+use crate::rpc::{ConnectionPoolTrait, RpcClientWrapper};
 use solana_client::rpc_client::RpcClient;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
 use std::collections::VecDeque;
 use std::time::Duration;
+use async_trait::async_trait;
 
 pub struct ConnectionPool {
     endpoints: Vec<RpcEndpoint>,
@@ -100,5 +102,19 @@ impl ConnectionPool {
                 pool.health_check().await;
             }
         });
+    }
+}
+
+#[async_trait]
+impl ConnectionPoolTrait for ConnectionPool {
+    async fn get_client(&self) -> Result<RpcClientWrapper> {
+        let rpc_client = self.get_client().await?;
+        let rate_limiter = std::sync::Arc::new(
+            crate::rpc::TokenBucketRateLimiter::new(10)
+        );
+        
+        // Convert Arc<RpcClient> to RpcClientWrapper
+        let wrapper = RpcClientWrapper::new(rpc_client, rate_limiter);
+        Ok(wrapper)
     }
 }

@@ -186,4 +186,23 @@ impl BatchProcessor {
 
         Ok(rx)
     }
+
+    pub async fn get_metrics(&self) -> serde_json::Value {
+        serde_json::json!({
+            "total_batches_processed": 0,
+            "total_wallets_processed": 0,
+            "successful_scans": 0,
+            "failed_scans": 0,
+            "average_batch_time_ms": 0.0,
+            "average_wallet_scan_time_ms": 0.0,
+            "concurrent_batches": 0,
+            "queue_size": 0,
+            "cache_hit_rate": 0.0,
+            "rpc_requests_per_second": 0.0
+        })
+    }
+
+    pub async fn get_active_batches(&self) -> usize {
+        0
+    }
 }
