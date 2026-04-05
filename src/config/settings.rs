@@ -18,6 +18,11 @@ impl From<crate::config::CacheConfig> for crate::storage::CacheConfig {
             ttl_seconds: config.ttl_seconds,
             max_size: config.max_size,
             cleanup_interval_seconds: config.cleanup_interval_seconds,
+            enable_hierarchical_cache: true,
+            l1_cache_size: 1000,
+            l2_cache_size: 5000,
+            compression_threshold: 1024,
+            enable_metrics: true,
         }
     }
 }

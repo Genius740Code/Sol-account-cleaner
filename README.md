@@ -340,7 +340,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for the Solana ecosystem**
-#   S o l - a c c o u n t - c l e a n e r 
- 
- 
+**Built with ❤️ for the Solana ecosystem** 

@@ -195,6 +195,7 @@ pub struct RecoveryConfig {
     pub confirmation_timeout_seconds: u64,
     pub retry_attempts: u32,
     pub min_balance_lamports: u64,
+    pub max_concurrent_recoveries: Option<usize>,
 }
 
 impl Default for RecoveryConfig {
@@ -206,6 +207,7 @@ impl Default for RecoveryConfig {
             confirmation_timeout_seconds: 120,
             retry_attempts: 3,
             min_balance_lamports: 5_000,     // Minimum balance to include in recovery
+            max_concurrent_recoveries: Some(5),
         }
     }
 }

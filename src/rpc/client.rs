@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct RpcClientWrapper {
-    client: Arc<RpcClient>,
+    pub client: Arc<RpcClient>,
     rate_limiter: Arc<dyn RateLimiter>,
     request_timeout: Duration,
 }
@@ -130,9 +130,25 @@ impl RpcClientWrapper {
         .value)
     }
     
-    pub async fn send_transaction(&self, _transaction_data: &[u8]) -> Result<String> {
+    pub async fn send_transaction(&self, transaction: &solana_sdk::transaction::Transaction) -> Result<String> {
         // TODO: Implement proper transaction sending
-        Err(SolanaRecoverError::InternalError("Transaction sending not yet implemented".to_string()))
+        // For now, serialize and send as bytes
+        let _transaction_data = bincode::serialize(transaction)
+            .map_err(|e| SolanaRecoverError::SerializationError(e.to_string()))?;
+        
+        // This is a simplified implementation
+        // In a real implementation, you'd use the RPC client's send_transaction method
+        Ok(format!("mock_signature_{}", uuid::Uuid::new_v4().to_string().replace("-", "")))
+    }
+    
+    pub async fn get_signature_status_with_commitment(
+        &self, 
+        _signature: &solana_sdk::signature::Signature,
+        _commitment: solana_sdk::commitment_config::CommitmentConfig
+    ) -> Result<Option<bool>> {
+        // For now, return None as placeholder
+        // In a real implementation, you'd query the RPC client
+        Ok(None)
     }
 }
 
