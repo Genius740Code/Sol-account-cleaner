@@ -241,10 +241,17 @@ cargo test --features bench
 
 ## 📚 Documentation
 
-- [API Reference](docs/api.md) - Complete API documentation
-- [Deployment Guide](docs/deployment.md) - Production deployment
-- [Architecture](docs/architecture.md) - Technical architecture details
+### User Documentation
+- [Getting Started Guide](docs/getting-started.md) - Complete setup and usage guide
+- [API Documentation](docs/api.md) - REST API reference and examples
+- [Configuration Guide](docs/configuration.md) - All configuration options
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+
+### Developer Documentation
+- [Contributing Guide](CONTRIBUTING.md) - Development setup and contribution guidelines
+- [Deployment Guide](docs/deployment.md) - Production deployment instructions
 - [Examples](examples/) - Code examples and usage patterns
+- [Architecture](docs/architecture.md) - Technical architecture details
 
 ## 🤝 Contributing
 
@@ -289,14 +296,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Performance optimizations
 - [ ] Web dashboard
 
-### v0.3.0 (Future)
-- [ ] Mobile app support
-- [ ] Advanced analytics
-- [ ] Multi-chain support
-- [ ] Enterprise features
-
 ---
 
 **Built with ❤️ for the Solana ecosystem**
-#   S o l - a c c o u n t - c l e a n e r  
+#   S o l - a c c o u n t - c l e a n e r 
+ 
  
