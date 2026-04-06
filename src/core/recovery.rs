@@ -74,7 +74,7 @@ impl RecoveryManager {
     pub async fn recover_sol(&self, request: &RecoveryRequest) -> Result<RecoveryResult> {
         // Rate limiting
         let _permit = self.rate_limiter.acquire().await
-            .map_err(|_| SolanaRecoverError::RateLimitExceeded)?;
+            .map_err(|_| SolanaRecoverError::RateLimitExceeded("Rate limit exceeded".to_string()))?;
         
         let start_time = std::time::Instant::now();
         info!("Starting SOL recovery for wallet: {}", request.wallet_address);
@@ -107,9 +107,10 @@ impl RecoveryManager {
         let destination_address = if request.destination_address.is_empty() || 
                                    request.destination_address == "auto" ||
                                    request.destination_address == request.wallet_address {
-            info!("Defaulting destination to user wallet: {}", request.wallet_address);
+            info!("Auto-defaulting destination to source wallet: {}", request.wallet_address);
             &request.wallet_address
         } else {
+            info!("Using explicit destination: {}", request.destination_address);
             &request.destination_address
         };
         
@@ -467,7 +468,7 @@ impl RecoveryManager {
         
         // Rate limiting check
         if self.check_rate_limit(&request.wallet_address).await? {
-            return Err(SolanaRecoverError::RateLimitExceeded);
+            return Err(SolanaRecoverError::RateLimitExceeded("Rate limit exceeded".to_string()));
         }
 
         Ok(())

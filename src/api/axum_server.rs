@@ -110,7 +110,7 @@ impl AxumServer {
 impl IntoResponse for SolanaRecoverError {
     fn into_response(self) -> axum::response::Response {
         let (status, error_message) = match self {
-            SolanaRecoverError::RateLimitExceeded => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded".to_string()),
+            SolanaRecoverError::RateLimitExceeded(_) => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded".to_string()),
             SolanaRecoverError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
             SolanaRecoverError::InvalidWalletAddress(_) => (StatusCode::BAD_REQUEST, "Invalid wallet address".to_string()),
             SolanaRecoverError::AuthenticationError(_) => (StatusCode::UNAUTHORIZED, "Authentication failed".to_string()),

@@ -13,7 +13,7 @@ struct Cli {
     #[arg(short, long)]
     wallet: Option<String>,
     
-    /// Destination wallet for SOL recovery (only used with --wallet)
+    /// Destination wallet for SOL recovery (optional - defaults to your wallet if not specified)
     #[arg(short, long)]
     destination: Option<String>,
     
@@ -133,6 +133,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!();
                 println!("💸 No SOL available to reclaim from this wallet.");
             }
+        } else if result.recoverable_sol > 0.0 {
+            // No destination specified - default to user's wallet
+            println!();
+            
+            if !cli.force {
+                println!("⚠️  This will close {} empty token accounts and transfer {:.9} SOL back to your wallet", 
+                         result.empty_accounts, result.recoverable_sol);
+                print!("Are you sure you want to continue? [y/N]: ");
+                io::stdout().flush()?;
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                if !input.trim().to_lowercase().starts_with('y') {
+                    println!("❌ Reclamation cancelled");
+                    return Ok(());
+                }
+            }
+
+            let empty_account_addresses: Vec<String> = result.empty_account_addresses.clone();
+            
+            let recovery_request = RecoveryRequest {
+                id: uuid::Uuid::new_v4(),
+                wallet_address: wallet_address.clone(),
+                destination_address: wallet_address.clone(), // Default to user's wallet
+                empty_accounts: empty_account_addresses,
+                max_fee_lamports: Some(10_000_000),
+                priority_fee_lamports: None,
+                wallet_connection_id: None, // Would need wallet connection for address-based
+                user_id: None,
+                created_at: chrono::Utc::now(),
+            };
+            
+            let start_time = std::time::Instant::now();
+            match recover_sol(&recovery_request, None).await {
+                Ok(recovery_result) => {
+                    let elapsed = start_time.elapsed();
+                    print!("✅ Reclamation completed in {}ms\n", elapsed.as_millis());
+                    println!("💎 Successfully reclaimed {:.9} SOL back to your wallet!", recovery_result.net_sol);
+                }
+                Err(e) => {
+                    println!("❌ Reclamation failed: {}", e);
+                }
+            }
+        } else {
+            println!();
+            println!("💸 No SOL available to reclaim from this wallet.");
         }
 
         return Ok(());
@@ -248,15 +293,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => {
             // No subcommand and no wallet - show help
             println!("Usage:");
-            println!("  solana-recover --wallet <ADDRESS>              # Quick scan");
-            println!("  solana-recover --wallet <ADDRESS> --destination <DEST> # Scan & reclaim");
+            println!("  solana-recover --wallet <ADDRESS>              # Quick scan (no reclaim)");
+            println!("  solana-recover --wallet <ADDRESS>              # Scan & reclaim to your wallet");
+            println!("  solana-recover --wallet <ADDRESS> --destination <DEST> # Scan & reclaim to specific wallet");
             println!("  solana-recover show --targets <WALLETS>     # Show total claimable");
             println!("  solana-recover reclaim --targets <WALLETS> --destination <DEST> # Reclaim SOL");
             println!("  solana-recover batch <FILE>                  # Batch scan from file");
             println!();
             println!("Examples:");
             println!("  solana-recover --wallet 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
-            println!("  solana-recover --wallet <ADDRESS> --destination <DEST>");
+            println!("  solana-recover --wallet <ADDRESS>              # Reclaims to your wallet by default");
+            println!("  solana-recover --wallet <ADDRESS> --destination <DEST> # Reclaims to specific wallet");
             println!("  solana-recover show --targets \"wallet:addr1,addr2\"");
             println!("  solana-recover reclaim --targets \"key:privkey1\" --destination <DEST>");
         }

@@ -18,6 +18,15 @@ pub struct TokenAccountInfo {
     pub amount: u64,
 }
 
+// OpenBook OpenOrders account structure for binary parsing
+#[derive(Debug, Clone)]
+pub struct OpenOrdersAccountInfo {
+    pub base_token_free: u64,
+    pub base_token_total: u64,
+    pub quote_token_free: u64,
+    pub quote_token_total: u64,
+}
+
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 
 #[derive(Clone)]
@@ -69,7 +78,7 @@ impl WalletScanner {
         let client = self.connection_pool.get_client().await?;
 
         // Get all token accounts that might have recoverable SOL
-        let all_accounts = client.get_token_accounts(&pubkey).await?;
+        let all_accounts = client.get_all_recoverable_accounts(&pubkey).await?;
         let total_accounts = all_accounts.len();
 
         info!("🔍 Found {} total accounts for wallet {}", total_accounts, wallet_address);
@@ -239,7 +248,35 @@ impl WalletScanner {
         // Case 3: Other program accounts that might be empty and hold recoverable SOL
         // This catches accounts from other programs that might have zero balance but hold rent
         else {
-            // For non-system, non-token accounts, check if they have data and are executable
+            // Check for OpenBook/Serum OpenOrders accounts specifically
+            if owner_pubkey == Pubkey::from_str("opnb2vDkSQsqmY24zQ4DDEZf1V3oEisPZ5bEErLNRsA").unwrap_or_default() ||
+               owner_pubkey == Pubkey::from_str("srmqPvvk92GzrcCbKgSGx3mFHTEQuoE3jUuAM6gEKrP").unwrap_or_default() {
+                // Handle OpenBook/Serum OpenOrders accounts
+                match &account.data {
+                    solana_account_decoder::UiAccountData::Binary(data_str, encoding) => {
+                        if let Ok(open_orders) = self.parse_open_orders_account_from_binary(data_str, encoding) {
+                            // Safety checks: Only flag as recoverable if all balances are zero
+                            if open_orders.base_token_free == 0 && 
+                               open_orders.quote_token_free == 0 && 
+                               open_orders.base_token_total == 0 && 
+                               open_orders.quote_token_total == 0 && 
+                               account.lamports > 0 {
+                                return Ok(Some(EmptyAccount {
+                                    address: account_pubkey_str.clone(),
+                                    lamports: account.lamports,
+                                    owner: account.owner.clone(),
+                                    mint: None, // OpenOrders accounts don't have a mint
+                                }));
+                            }
+                        }
+                    }
+                    _ => {
+                        debug!("Warning: OpenBook account {} has non-binary data format", account_pubkey_str);
+                    }
+                }
+            }
+            
+            // For other non-system, non-token accounts, check if they have data and are executable
             // If they're not executable and have minimal data, they might be recoverable
             if !account.executable && account.lamports > 0 {
                 let client = self.connection_pool.get_client().await?;
@@ -326,6 +363,68 @@ impl WalletScanner {
         Ok(TokenAccountInfo {
             mint: mint_pubkey.to_string(),
             amount,
+        })
+    }
+
+    // Helper method to parse OpenBook OpenOrders account from binary data
+    pub fn parse_open_orders_account_from_binary(&self, data_str: &str, encoding: &UiAccountEncoding) -> Result<OpenOrdersAccountInfo> {
+        // Decode based on the encoding type
+        let decoded_data = match encoding {
+            UiAccountEncoding::Base64 => {
+                use base64::{Engine as _, engine::general_purpose};
+                general_purpose::STANDARD.decode(data_str)
+                    .map_err(|_| SolanaRecoverError::InternalError("Failed to decode Base64 data for OpenOrders".to_string()))?
+            }
+            UiAccountEncoding::Base58 => {
+                bs58::decode(data_str)
+                    .into_vec()
+                    .map_err(|_| SolanaRecoverError::InternalError("Failed to decode Base58 data for OpenOrders".to_string()))?
+            }
+            _ => {
+                return Err(SolanaRecoverError::InternalError("Unsupported encoding for OpenOrders account".to_string()));
+            }
+        };
+
+        // OpenOrders account structure (simplified for safety checks):
+        // - 8 bytes: discriminator
+        // - 32 bytes: market (Pubkey)
+        // - 32 bytes: owner/authority (Pubkey) - this is what we filter by
+        // - 8 bytes: base_token_free (u64)
+        // - 8 bytes: base_token_total (u64)
+        // - 8 bytes: quote_token_free (u64)
+        // - 8 bytes: quote_token_total (u64)
+        // - ... other fields we don't need for empty detection
+        
+        // Safety check - ensure we have at least 96 bytes for the fields we need
+        if decoded_data.len() < 96 {
+            return Err(SolanaRecoverError::InternalError("Invalid OpenOrders account data length".to_string()));
+        }
+
+        // Extract base_token_free (bytes 72-80, after discriminator, market, owner)
+        let base_token_free_bytes = &decoded_data[72..80];
+        let base_token_free = u64::from_le_bytes(base_token_free_bytes.try_into()
+            .map_err(|_| SolanaRecoverError::InternalError("Failed to parse base_token_free".to_string()))?);
+
+        // Extract base_token_total (bytes 80-88)
+        let base_token_total_bytes = &decoded_data[80..88];
+        let base_token_total = u64::from_le_bytes(base_token_total_bytes.try_into()
+            .map_err(|_| SolanaRecoverError::InternalError("Failed to parse base_token_total".to_string()))?);
+
+        // Extract quote_token_free (bytes 88-96)
+        let quote_token_free_bytes = &decoded_data[88..96];
+        let quote_token_free = u64::from_le_bytes(quote_token_free_bytes.try_into()
+            .map_err(|_| SolanaRecoverError::InternalError("Failed to parse quote_token_free".to_string()))?);
+
+        // Extract quote_token_total (bytes 96-104)
+        let quote_token_total_bytes = &decoded_data[96..104];
+        let quote_token_total = u64::from_le_bytes(quote_token_total_bytes.try_into()
+            .map_err(|_| SolanaRecoverError::InternalError("Failed to parse quote_token_total".to_string()))?);
+
+        Ok(OpenOrdersAccountInfo {
+            base_token_free,
+            base_token_total,
+            quote_token_free,
+            quote_token_total,
         })
     }
 }

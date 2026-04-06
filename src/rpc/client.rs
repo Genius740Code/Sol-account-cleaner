@@ -1,11 +1,14 @@
 use crate::core::{Result, SolanaRecoverError};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
+use solana_client::rpc_filter::{RpcFilterType, Memcmp, MemcmpEncodedBytes};
+use solana_client::rpc_config::{RpcProgramAccountsConfig, RpcAccountInfoConfig};
 use solana_sdk::{pubkey::Pubkey, commitment_config::CommitmentConfig};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use moka::future::Cache;
 use base64::Engine;
+use std::str::FromStr;
 
 pub struct RpcClientWrapper {
     client: Arc<RpcClient>,
@@ -59,6 +62,136 @@ impl RpcClientWrapper {
     
     pub fn from_url(url: &str, timeout_ms: u64) -> Result<Self> {
         Self::new_with_url(url, timeout_ms)
+    }
+
+    pub async fn get_all_recoverable_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+        let mut all_accounts = self.get_token_accounts(pubkey).await?;
+        
+        // Add OpenBook accounts
+        let openbook_accounts = self.get_openbook_accounts(pubkey).await?;
+        all_accounts.extend(openbook_accounts);
+        
+        Ok(all_accounts)
+    }
+
+    pub async fn get_openbook_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+        self.rate_limiter.acquire().await?;
+        
+        // OpenBook V2 program ID
+        let openbook_v2_id = Pubkey::from_str("opnb2vDkSQsqmY24zQ4DDEZf1V3oEisPZ5bEErLNRsA")
+            .map_err(|_| SolanaRecoverError::InternalError("Invalid OpenBook V2 program ID".to_string()))?;
+        
+        // Serum DEX program ID (legacy)
+        let serum_dex_id = Pubkey::from_str("srmqPvvk92GzrcCbKgSGx3mFHTEQuoE3jUuAM6gEKrP")
+            .map_err(|_| SolanaRecoverError::InternalError("Invalid Serum DEX program ID".to_string()))?;
+        
+        let client = self.client.clone();
+        let owner_pubkey = *pubkey;
+        let timeout = self.request_timeout;
+        
+        // Fetch OpenBook V2 accounts
+        let openbook_v2_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
+            let client = client.clone();
+            let pubkey = owner_pubkey;
+            move || {
+                // Filter for accounts where the wallet is the authority (owner) at offset 45
+                let memcmp_filter = Memcmp::new(
+                    45, // Offset where authority sits in OpenOrders account data
+                    MemcmpEncodedBytes::Bytes(pubkey.to_bytes().to_vec()),
+                );
+                
+                let config = RpcProgramAccountsConfig {
+                    filters: Some(vec![RpcFilterType::Memcmp(memcmp_filter)]),
+                    account_config: RpcAccountInfoConfig {
+                        encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
+                        data_slice: None,
+                        commitment: Some(CommitmentConfig::confirmed()),
+                        min_context_slot: None,
+                    },
+                    with_context: None,
+                };
+                
+                client.get_program_accounts_with_config(&openbook_v2_id, config)
+            }
+        })).await
+        .map_err(|_| SolanaRecoverError::NetworkError("OpenBook V2 request timeout".to_string()))?
+        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
+        .map_err(SolanaRecoverError::RpcClientError)?;
+        
+        // Fetch Serum DEX accounts (legacy)
+        let serum_dex_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
+            let client = client.clone();
+            let pubkey = owner_pubkey;
+            move || {
+                // Filter for accounts where the wallet is the authority (owner) at offset 45
+                let memcmp_filter = Memcmp::new(
+                    45, // Offset where authority sits in OpenOrders account data
+                    MemcmpEncodedBytes::Bytes(pubkey.to_bytes().to_vec()),
+                );
+                
+                let config = RpcProgramAccountsConfig {
+                    filters: Some(vec![RpcFilterType::Memcmp(memcmp_filter)]),
+                    account_config: RpcAccountInfoConfig {
+                        encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
+                        data_slice: None,
+                        commitment: Some(CommitmentConfig::confirmed()),
+                        min_context_slot: None,
+                    },
+                    with_context: None,
+                };
+                
+                client.get_program_accounts_with_config(&serum_dex_id, config)
+            }
+        })).await
+        .map_err(|_| SolanaRecoverError::NetworkError("Serum DEX request timeout".to_string()))?
+        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
+        .map_err(SolanaRecoverError::RpcClientError)?;
+        
+        // Convert program accounts to RpcKeyedAccount format
+        let mut all_openbook_accounts = Vec::new();
+        
+        // Process OpenBook V2 accounts
+        for (pubkey, account) in openbook_v2_accounts {
+            let ui_account = solana_account_decoder::UiAccount {
+                lamports: account.lamports,
+                data: solana_account_decoder::UiAccountData::Binary(
+                    base64::engine::general_purpose::STANDARD.encode(&account.data),
+                    solana_account_decoder::UiAccountEncoding::Base64
+                ),
+                owner: openbook_v2_id.to_string(),
+                executable: account.executable,
+                rent_epoch: account.rent_epoch,
+                space: Some(account.data.len() as u64),
+            };
+            
+            // Convert to the format expected by the scanner
+            all_openbook_accounts.push(solana_client::rpc_response::RpcKeyedAccount {
+                pubkey: pubkey.to_string(),
+                account: ui_account,
+            });
+        }
+        
+        // Process Serum DEX accounts
+        for (pubkey, account) in serum_dex_accounts {
+            let ui_account = solana_account_decoder::UiAccount {
+                lamports: account.lamports,
+                data: solana_account_decoder::UiAccountData::Binary(
+                    base64::engine::general_purpose::STANDARD.encode(&account.data),
+                    solana_account_decoder::UiAccountEncoding::Base64
+                ),
+                owner: serum_dex_id.to_string(),
+                executable: account.executable,
+                rent_epoch: account.rent_epoch,
+                space: Some(account.data.len() as u64),
+            };
+            
+            all_openbook_accounts.push(solana_client::rpc_response::RpcKeyedAccount {
+                pubkey: pubkey.to_string(),
+                account: ui_account,
+            });
+        }
+        
+        Ok(all_openbook_accounts)
     }
 
     pub async fn get_token_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
@@ -308,7 +441,7 @@ impl RateLimiter for TokenBucketRateLimiter {
             *tokens -= 1;
             Ok(())
         } else {
-            Err(SolanaRecoverError::RateLimitExceeded)
+            Err(SolanaRecoverError::RateLimitExceeded("Rate limit exceeded".to_string()))
         }
     }
 }

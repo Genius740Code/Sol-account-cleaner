@@ -8,14 +8,8 @@ pub enum SolanaRecoverError {
     #[error("Invalid wallet address: {0}")]
     InvalidWalletAddress(String),
     
-    #[error("Invalid input: {0}")]
-    InvalidInput(String),
-    
-    #[error("No recoverable funds: {0}")]
-    NoRecoverableFunds(String),
-    
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
+    #[error("Rate limit exceeded: {0}")]
+    RateLimitExceeded(String),
     
     #[error("Connection pool exhausted")]
     ConnectionPoolExhausted,
@@ -59,17 +53,23 @@ pub enum SolanaRecoverError {
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
     
-    #[error("Transaction error: {0}")]
-    TransactionError(String),
-    
     #[error("Internal error: {0}")]
     InternalError(String),
+    
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+    
+    #[error("No recoverable funds")]
+    NoRecoverableFunds(String),
     
     #[error("Database error: {0}")]
     DatabaseError(String),
     
-    #[error("Database error: {0}")]
+    #[error("Rusqlite error: {0}")]
     RusqliteError(#[from] rusqlite::Error),
+    
+    #[error("Transaction error: {0}")]
+    TransactionError(String),
 }
 
 pub type Result<T> = std::result::Result<T, SolanaRecoverError>;
