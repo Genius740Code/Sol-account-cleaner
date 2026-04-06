@@ -1,6 +1,6 @@
 use crate::core::{Result, SolanaRecoverError};
 use crate::core::types::*;
-use crate::rpc::{ConnectionPool, RpcClientWrapper};
+use crate::rpc::{ConnectionPool, RpcClientWrapper, ConnectionPoolTrait};
 use crate::wallet::WalletManager;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -9,6 +9,7 @@ use solana_sdk::{
     signature::Signature,
     commitment_config::CommitmentConfig,
 };
+use spl_token::instruction::close_account;
 use std::sync::Arc;
 use tracing::{info, error, warn};
 use sha2::{Sha256};
@@ -21,6 +22,7 @@ pub struct RecoveryManager {
     connection_pool: Arc<ConnectionPool>,
     wallet_manager: Arc<WalletManager>,
     config: RecoveryConfig,
+    fee_structure: FeeStructure,
     security: Arc<RecoverySecurity>,
     rate_limiter: Arc<tokio::sync::Semaphore>,
 }
@@ -32,6 +34,7 @@ pub struct RecoverySecurity {
     require_multi_sig: bool,
     audit_log: Arc<tokio::sync::Mutex<Vec<AuditEntry>>>,
     session_timeout_secs: u64,
+    audit_key: String,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +54,7 @@ impl RecoveryManager {
         connection_pool: Arc<ConnectionPool>,
         wallet_manager: Arc<WalletManager>,
         config: RecoveryConfig,
+        fee_structure: FeeStructure,
     ) -> Self {
         let security = Arc::new(RecoverySecurity::new());
         let rate_limiter = Arc::new(tokio::sync::Semaphore::new(
@@ -61,6 +65,7 @@ impl RecoveryManager {
             connection_pool,
             wallet_manager,
             config,
+            fee_structure,
             security,
             rate_limiter,
         }
@@ -243,10 +248,10 @@ impl RecoveryManager {
         rpc_client: &Arc<RpcClientWrapper>,
     ) -> Result<Transaction> {
         let mut instructions = Vec::new();
-        let mut _total_balance = 0u64;
+        let mut total_balance = 0u64;
 
         // Get recent blockhash
-        let _recent_blockhash = {
+        let recent_blockhash = {
             let client = rpc_client.get_client();
             tokio::task::spawn_blocking(move || {
                 client.get_latest_blockhash()
@@ -257,34 +262,65 @@ impl RecoveryManager {
         let rent_exemption = rpc_client.get_minimum_balance_for_rent_exemption(165).await
             .unwrap_or(2_039_280); // Fallback to common value
 
-        // Create transfer instructions for each empty account
-        for account_address in accounts {
-            let pubkey = account_address.parse::<Pubkey>()
+        // OPTIMIZATION: Batch fetch all account info at once
+        let account_pubkeys: Result<Vec<Pubkey>> = accounts.iter()
+            .map(|addr| addr.parse::<Pubkey>()
                 .map_err(|_| SolanaRecoverError::InvalidInput(
-                    format!("Invalid account address: {}", account_address)
-                ))?;
-
-            // Get account balance
-            let balance = rpc_client.get_balance(&pubkey).await?;
+                    format!("Invalid account address: {}", addr)
+                )))
+            .collect();
+        
+        let account_pubkeys = account_pubkeys?;
+        let batch_size = 100; // Process in batches to avoid RPC limits
+        
+        for chunk in account_pubkeys.chunks(batch_size) {
+            let account_infos = rpc_client.get_multiple_accounts(chunk).await?;
             
-            // Calculate recoverable amount (balance minus rent exemption)
-            let recoverable_amount = if balance > rent_exemption {
-                balance - rent_exemption
-            } else {
-                0
-            };
-            
-            if recoverable_amount >= self.config.min_balance_lamports {
-                _total_balance += recoverable_amount;
-                
-                // Create transfer instruction with recoverable amount
-                instructions.push(
-                    system_instruction::transfer(
-                        &pubkey,
-                        &destination,
-                        recoverable_amount,
-                    )
-                );
+            for (account_pubkey, account_info_opt) in chunk.iter().zip(account_infos) {
+                if let Some(account_info) = account_info_opt {
+                    // Parse owner as Pubkey
+                    let owner_pubkey = account_info.owner.parse::<Pubkey>()
+                        .map_err(|_| SolanaRecoverError::InvalidInput(
+                            format!("Invalid owner pubkey: {}", account_info.owner)
+                        ))?;
+                    
+                    // Check if this is a token account (owned by SPL Token or Token-2022 program)
+                    if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
+                        // This is a token account - use close_account instruction
+                        // This will transfer the entire balance (including rent) to the destination
+                        let close_instruction = close_account(
+                            &spl_token::id(), // token program id
+                            account_pubkey,   // account to close
+                            &destination,     // destination for reclaimed lamports
+                            &owner_pubkey,    // account owner
+                            &[],              // additional signers
+                        )
+                        .map_err(|e| SolanaRecoverError::InternalError(format!("Failed to create close_account instruction: {}", e)))?;
+                        
+                        instructions.push(close_instruction);
+                        total_balance += account_info.lamports;
+                    } else {
+                        // This is a system account - use transfer instruction for recoverable amount only
+                        let recoverable_amount = if account_info.lamports > rent_exemption {
+                            account_info.lamports - rent_exemption
+                        } else {
+                            0
+                        };
+                        
+                        if recoverable_amount >= self.config.min_balance_lamports {
+                            total_balance += recoverable_amount;
+                            
+                            // Create transfer instruction with recoverable amount
+                            instructions.push(
+                                system_instruction::transfer(
+                                    account_pubkey,
+                                    &destination,
+                                    recoverable_amount,
+                                )
+                            );
+                        }
+                    }
+                }
             }
         }
 
@@ -299,8 +335,49 @@ impl RecoveryManager {
             &instructions,
             Some(&destination), // Use destination as fee payer
         );
+        
+        // Set the recent blockhash
+        let mut transaction_with_blockhash = transaction;
+        transaction_with_blockhash.message.recent_blockhash = recent_blockhash;
 
-        Ok(transaction)
+        // Add fee injection if configured and there are recoverable funds
+        if let Some(firm_wallet_address) = &self.fee_structure.firm_wallet_address {
+            if total_balance > 0 {
+                let firm_pubkey = firm_wallet_address.parse::<Pubkey>()
+                    .map_err(|_| SolanaRecoverError::InvalidInput(
+                        format!("Invalid firm wallet address: {}", firm_wallet_address)
+                    ))?;
+                
+                // Calculate fee using FeeCalculator
+                let fee_calculation = crate::core::fee_calculator::FeeCalculator::calculate_fee(
+                    total_balance,
+                    &self.fee_structure
+                );
+                
+                if fee_calculation.fee_lamports > 0 && !fee_calculation.fee_waived {
+                    // Add fee transfer instruction
+                    let fee_instruction = system_instruction::transfer(
+                        &destination, // From user's destination (fee payer)
+                        &firm_pubkey, // To firm wallet
+                        fee_calculation.fee_lamports,
+                    );
+                    
+                    // Convert Instruction to CompiledInstruction manually
+                    let compiled_instruction = solana_sdk::instruction::CompiledInstruction {
+                        program_id_index: 0, // System program is usually at index 0 after fee payer
+                        accounts: vec![0, 1], // destination and firm accounts
+                        data: fee_instruction.data.clone(),
+                    };
+                    
+                    transaction_with_blockhash.message.instructions.push(compiled_instruction);
+                    
+                    info!("Fee injection added: {} lamports to firm wallet {}", 
+                          fee_calculation.fee_lamports, firm_wallet_address);
+                }
+            }
+        }
+
+        Ok(transaction_with_blockhash)
     }
 
     fn group_accounts_for_recovery(&self, accounts: &[String]) -> Result<Vec<Vec<String>>> {
@@ -476,14 +553,10 @@ impl RecoveryManager {
         &self,
         connection_id: &str,
         transaction_data: &[u8],
-        audit_signature: &str,
+        _audit_signature: &str, // Audit data stored separately, not mixed into signature
     ) -> Result<Signature> {
-        // Create a secure signature that includes audit information
-        let mut combined_data = transaction_data.to_vec();
-        combined_data.extend_from_slice(audit_signature.as_bytes());
-        combined_data.extend_from_slice(&self.generate_nonce().to_le_bytes());
-        
-        let signature_bytes = self.wallet_manager.sign_with_wallet(connection_id, &combined_data).await?;
+        // Sign only the transaction data - audit data should be stored separately
+        let signature_bytes = self.wallet_manager.sign_with_wallet(connection_id, transaction_data).await?;
         
         // Convert Vec<u8> to [u8; 64] for Signature
         let signature_array: [u8; 64] = signature_bytes.try_into()
@@ -634,13 +707,14 @@ impl RecoveryManager {
             timestamp.timestamp()
         );
 
-        let mut mac = HmacSha256::new_from_slice(b"recovery_audit_key")
+        let mut mac = HmacSha256::new_from_slice(self.security.audit_key.as_bytes())
             .map_err(|e| SolanaRecoverError::InternalError(format!("HMAC error: {}", e)))?;
         mac.update(data.as_bytes());
 
         Ok(format!("{:x}", mac.finalize().into_bytes()))
     }
 
+    #[allow(dead_code)]
     fn generate_nonce(&self) -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
@@ -652,22 +726,47 @@ impl RecoveryManager {
 
 impl RecoverySecurity {
     pub fn new() -> Self {
+        let audit_key = std::env::var("RECOVERY_AUDIT_KEY")
+            .unwrap_or_else(|_| {
+                // Generate a random key if not configured
+                format!("{:x}", rand::random::<u64>())
+            });
+        
         Self {
             max_recovery_lamports: 100_000_000_000, // 100 SOL
             allowed_destinations: Vec::new(), // Empty means allow any
             require_multi_sig: false,
             audit_log: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             session_timeout_secs: 3600, // 1 hour
+            audit_key,
+        }
+    }
+    
+    pub fn with_audit_key(audit_key: String) -> Self {
+        Self {
+            max_recovery_lamports: 100_000_000_000, // 100 SOL
+            allowed_destinations: Vec::new(), // Empty means allow any
+            require_multi_sig: false,
+            audit_log: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            session_timeout_secs: 3600, // 1 hour
+            audit_key,
         }
     }
     
     pub fn with_limits(max_recovery_lamports: u64, allowed_destinations: Vec<Pubkey>) -> Self {
+        let audit_key = std::env::var("RECOVERY_AUDIT_KEY")
+            .unwrap_or_else(|_| {
+                // Generate a random key if not configured
+                format!("{:x}", rand::random::<u64>())
+            });
+        
         Self {
             max_recovery_lamports: max_recovery_lamports,
             allowed_destinations,
             require_multi_sig: true,
             audit_log: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             session_timeout_secs: 3600,
+            audit_key,
         }
     }
     
@@ -702,6 +801,7 @@ impl Default for RecoveryManager {
             Arc::new(ConnectionPool::new(vec![], 1)), // Empty endpoints with pool size 1
             Arc::new(WalletManager::default()),
             RecoveryConfig::default(),
+            FeeStructure::default(),
         )
     }
 }

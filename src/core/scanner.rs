@@ -1,5 +1,5 @@
 use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount};
-use crate::rpc::ConnectionPoolTrait;
+use crate::rpc::{ConnectionPoolTrait};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -9,6 +9,7 @@ use std::str::FromStr;
 use solana_account_decoder::UiAccountEncoding;
 use bs58;
 use base64;
+use tracing::{info, debug, warn, error};
 
 // Token account structure for binary parsing
 #[derive(Debug, Clone)]
@@ -71,9 +72,9 @@ impl WalletScanner {
         let all_accounts = client.get_token_accounts(&pubkey).await?;
         let total_accounts = all_accounts.len();
 
-        println!("🔍 DEBUG: Found {} total accounts for wallet {}", total_accounts, wallet_address);
+        info!("🔍 Found {} total accounts for wallet {}", total_accounts, wallet_address);
         for (i, account) in all_accounts.iter().enumerate() {
-            println!("  Account {}: {} (owner: {}, lamports: {})", i + 1, account.pubkey, account.account.owner, account.account.lamports);
+            debug!("  Account {}: {} (owner: {}, lamports: {})", i + 1, account.pubkey, account.account.owner, account.account.lamports);
         }
 
         let mut empty_accounts: Vec<EmptyAccount> = Vec::new();
@@ -89,13 +90,30 @@ impl WalletScanner {
             }
         }
         
-        println!("🔍 DEBUG: Found {} unique accounts after deduplication", unique_accounts.len());
+        debug!("🔍 Found {} unique accounts after deduplication", unique_accounts.len());
 
-        for keyed_account in unique_accounts {
-            if let Some(empty_account) = self.check_empty_account(&keyed_account, wallet_address).await? {
-                println!("✅ Found empty account: {} ({} lamports)", empty_account.address, empty_account.lamports);
-                total_recoverable_lamports += empty_account.lamports;
-                empty_accounts.push(empty_account);
+        // Parallelize account checking using futures::future::join_all
+        let check_futures: Vec<_> = unique_accounts
+            .iter()
+            .map(|account| self.check_empty_account(account, wallet_address))
+            .collect();
+        
+        let results = futures::future::join_all(check_futures).await;
+        
+        for result in results {
+            match result {
+                Ok(Some(empty_account)) => {
+                    info!("✅ Found empty account: {} ({} lamports)", empty_account.address, empty_account.lamports);
+                    total_recoverable_lamports += empty_account.lamports;
+                    empty_accounts.push(empty_account);
+                }
+                Ok(None) => {
+                    // Account not empty, skip
+                }
+                Err(e) => {
+                    error!("Error checking account: {}", e);
+                    // Continue processing other accounts even if one fails
+                }
             }
         }
 
@@ -171,7 +189,7 @@ impl WalletScanner {
                                         // Non-zero amount, not empty
                                     }
                                     Err(e) => {
-                                        eprintln!("Warning: Failed to parse token amount for {}: {}", account_pubkey_str, e);
+                                        warn!("Warning: Failed to parse token amount for {}: {}", account_pubkey_str, e);
                                     }
                                 }
                             }
@@ -179,7 +197,7 @@ impl WalletScanner {
                     }
                 }
                 _ => {
-                    eprintln!("Warning: Unsupported data format for token account: {}", account_pubkey_str);
+                    warn!("Warning: Unsupported data format for token account: {}", account_pubkey_str);
                 }
             }
         } 
@@ -196,9 +214,9 @@ impl WalletScanner {
                 let is_data_empty = match &account.data {
                     solana_account_decoder::UiAccountData::Binary(data_str, _) => data_str.is_empty(),
                     solana_account_decoder::UiAccountData::Json(parsed) => {
-                        (parsed.parsed.is_null() ||
+                        parsed.parsed.is_null() ||
                         parsed.parsed.as_object().map_or(false, |obj| obj.is_empty()) ||
-                        parsed.parsed.as_array().map_or(false, |arr| arr.is_empty()))
+                        parsed.parsed.as_array().map_or(false, |arr| arr.is_empty())
                     },
                     solana_account_decoder::UiAccountData::LegacyBinary(_) => true,
                 };
@@ -242,9 +260,9 @@ impl WalletScanner {
                             data_str.is_empty() || data_str.len() < 50 // Small threshold for "minimal" data
                         },
                         solana_account_decoder::UiAccountData::Json(parsed) => {
-                            (parsed.parsed.is_null() ||
+                            parsed.parsed.is_null() ||
                             parsed.parsed.as_object().map_or(false, |obj| obj.is_empty()) ||
-                            parsed.parsed.as_array().map_or(false, |arr| arr.is_empty()))
+                            parsed.parsed.as_array().map_or(false, |arr| arr.is_empty())
                         },
                         solana_account_decoder::UiAccountData::LegacyBinary(_) => true,
                     };

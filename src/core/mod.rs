@@ -1,11 +1,15 @@
-pub mod types;
-pub mod errors;
-pub mod scanner;
-pub mod processor;
-pub mod fee_calculator;
-pub mod recovery;
 pub mod error_handling;
+pub mod errors;
+pub mod fee_calculator;
+pub mod processor;
+pub mod recovery;
+pub mod scanner;
+pub mod types;
 
+#[cfg(test)]
+mod recovery_tests;
+#[cfg(test)]
+mod scanner_tests;
 #[cfg(test)]
 mod tests;
 

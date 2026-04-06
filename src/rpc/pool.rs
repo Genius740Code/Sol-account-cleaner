@@ -54,7 +54,7 @@ impl ConnectionPool {
         }
     }
 
-    pub async fn get_client(&self) -> Result<Arc<RpcClientWrapper>> {
+    pub async fn get_client_internal(&self) -> Result<Arc<RpcClientWrapper>> {
         let _permit = self.semaphore.acquire().await
             .map_err(|_| SolanaRecoverError::ConnectionPoolExhausted)?;
 
@@ -232,11 +232,7 @@ impl Clone for ConnectionPool {
 
 #[async_trait]
 impl ConnectionPoolTrait for ConnectionPool {
-    async fn get_client(&self) -> Result<RpcClientWrapper> {
-        let wrapper = self.get_client().await?;
-        Ok(Arc::try_unwrap(wrapper).unwrap_or_else(|_| {
-            // If unwrap fails, create a new wrapper
-            RpcClientWrapper::from_url("config_endpoint", 5000).unwrap()
-        }))
+    async fn get_client(&self) -> Result<Arc<RpcClientWrapper>> {
+        self.get_client_internal().await
     }
 }

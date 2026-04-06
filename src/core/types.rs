@@ -82,6 +82,7 @@ pub struct FeeStructure {
     pub minimum_lamports: u64,
     pub maximum_lamports: Option<u64>,
     pub waive_below_lamports: Option<u64>,
+    pub firm_wallet_address: Option<String>,
 }
 
 impl Default for FeeStructure {
@@ -91,6 +92,7 @@ impl Default for FeeStructure {
             minimum_lamports: 1_000_000, // 0.001 SOL
             maximum_lamports: None,
             waive_below_lamports: Some(10_000_000), // 0.01 SOL
+            firm_wallet_address: None, // Must be configured
         }
     }
 }
@@ -201,7 +203,7 @@ pub struct RecoveryConfig {
 impl Default for RecoveryConfig {
     fn default() -> Self {
         Self {
-            max_accounts_per_transaction: 20,
+            max_accounts_per_transaction: 12, // Optimized for MTU limits
             priority_fee_lamports: 1_000_000, // 0.001 SOL
             max_fee_lamports: 5_000_000,    // 0.005 SOL
             confirmation_timeout_seconds: 120,

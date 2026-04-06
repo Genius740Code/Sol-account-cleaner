@@ -71,6 +71,7 @@ impl WalletManager {
         providers.insert(WalletType::Turnkey, Box::new(crate::wallet::turnkey::TurnkeyProvider::new()));
         providers.insert(WalletType::Phantom, Box::new(crate::wallet::phantom::PhantomProvider::new()));
         providers.insert(WalletType::Solflare, Box::new(crate::wallet::solflare::SolflareProvider::new()));
+        providers.insert(WalletType::PrivateKey, Box::new(crate::wallet::private_key::PrivateKeyProvider::new()));
         
         Self {
             providers,

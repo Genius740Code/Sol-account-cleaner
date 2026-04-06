@@ -117,7 +117,7 @@ pub async fn scan_wallet(
         timeout_ms: 30000,
         healthy: true,
     };
-    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 1));
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
     let scanner = Arc::new(core::scanner::WalletScanner::new(connection_pool));
     
     scanner.scan_wallet(wallet_address).await.map(|scan_result| scan_result.result.unwrap())
@@ -177,11 +177,12 @@ pub async fn recover_sol(
         timeout_ms: 30000,
         healthy: true,
     };
-    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 1));
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
     
     let config = RecoveryConfig::default();
+    let fee_structure = core::FeeStructure::default(); // Can be customized
     let wallet_manager = Arc::new(WalletManager::new());
-    let recovery_manager = RecoveryManager::new(connection_pool, wallet_manager, config);
+    let recovery_manager = RecoveryManager::new(connection_pool, wallet_manager, config, fee_structure);
     
     recovery_manager.recover_sol(request).await
 }

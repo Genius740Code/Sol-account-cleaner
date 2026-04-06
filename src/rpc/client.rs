@@ -4,11 +4,14 @@ use solana_client::rpc_request::TokenAccountsFilter;
 use solana_sdk::{pubkey::Pubkey, commitment_config::CommitmentConfig};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use moka::future::Cache;
+use base64::Engine;
 
 pub struct RpcClientWrapper {
     client: Arc<RpcClient>,
     rate_limiter: Arc<dyn RateLimiter>,
     request_timeout: Duration,
+    rent_cache: Cache<usize, u64>, // Cache for rent exemption queries
 }
 
 impl std::fmt::Debug for RpcClientWrapper {
@@ -21,10 +24,16 @@ impl std::fmt::Debug for RpcClientWrapper {
 
 impl RpcClientWrapper {
     pub fn new(client: Arc<RpcClient>, rate_limiter: Arc<dyn RateLimiter>) -> Self {
+        let rent_cache = Cache::builder()
+            .max_capacity(1000)
+            .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
+            .build();
+        
         Self {
             client,
             rate_limiter,
             request_timeout: Duration::from_secs(30),
+            rent_cache,
         }
     }
     
@@ -35,10 +44,16 @@ impl RpcClientWrapper {
         ));
         let rate_limiter = Arc::new(TokenBucketRateLimiter::new(100));
         
+        let rent_cache = Cache::builder()
+            .max_capacity(1000)
+            .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
+            .build();
+        
         Ok(Self {
             client,
             rate_limiter,
             request_timeout: Duration::from_millis(timeout_ms),
+            rent_cache,
         })
     }
     
@@ -110,7 +125,7 @@ impl RpcClientWrapper {
         let client = self.client.clone();
         let timeout = Duration::from_secs(5);
         
-        tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+        let _ = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
             client.get_latest_blockhash()
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Health check timeout".to_string()))?
@@ -139,7 +154,7 @@ impl RpcClientWrapper {
             solana_account_decoder::UiAccount {
                 lamports: account.lamports,
                 data: solana_account_decoder::UiAccountData::Binary(
-                    bs58::encode(&account.data).into_string(),
+                    base64::engine::general_purpose::STANDARD.encode(&account.data),
                     solana_account_decoder::UiAccountEncoding::Base64
                 ),
                 owner: account.owner.to_string(),
@@ -169,7 +184,7 @@ impl RpcClientWrapper {
             solana_account_decoder::UiAccount {
                 lamports: account.lamports,
                 data: solana_account_decoder::UiAccountData::Binary(
-                    bs58::encode(&account.data).into_string(),
+                    base64::engine::general_purpose::STANDARD.encode(&account.data),
                     solana_account_decoder::UiAccountEncoding::Base64
                 ),
                 owner: account.owner.to_string(),
@@ -221,17 +236,28 @@ impl RpcClientWrapper {
     }
     
     pub async fn get_minimum_balance_for_rent_exemption(&self, data_size: usize) -> Result<u64> {
+        // Check cache first
+        if let Some(cached_value) = self.rent_cache.get(&data_size).await {
+            return Ok(cached_value);
+        }
+        
         self.rate_limiter.acquire().await?;
         
         let client = self.client.clone();
         let timeout = self.request_timeout;
+        let cache = self.rent_cache.clone();
         
-        Ok(tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+        let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
             client.get_minimum_balance_for_rent_exemption(data_size)
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?)
+        .map_err(SolanaRecoverError::RpcClientError)?;
+        
+        // Cache the result
+        cache.insert(data_size, result).await;
+        
+        Ok(result)
     }
 }
 
