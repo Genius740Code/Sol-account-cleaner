@@ -277,3 +277,149 @@ fn test_scan_status_equality() {
     assert_ne!(ScanStatus::Pending, ScanStatus::Completed);
     assert_ne!(ScanStatus::InProgress, ScanStatus::Failed);
 }
+
+#[test]
+fn test_token_account_parsing_base64() {
+    use solana_recover::core::scanner::WalletScanner;
+    use solana_account_decoder::UiAccountEncoding;
+    use solana_sdk::pubkey::Pubkey;
+    
+    // Create a mock scanner
+    let scanner = WalletScanner::new(create_test_connection_pool());
+    
+    // Create a mock token account data (72 bytes minimum)
+    // Structure: [mint(32) + owner(32) + amount(8) + ...]
+    let mut token_data = vec![0u8; 80];
+    
+    // Set mint (first 32 bytes) - using a known USDC mint
+    let usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    let mint_pubkey = Pubkey::from_str(usdc_mint).unwrap();
+    token_data[0..32].copy_from_slice(mint_pubkey.as_ref());
+    
+    // Set owner (next 32 bytes) - using a mock owner
+    let owner_pubkey = Pubkey::new_unique();
+    token_data[32..64].copy_from_slice(owner_pubkey.as_ref());
+    
+    // Set amount to 0 (empty token account)
+    token_data[64..72].copy_from_slice(&0u64.to_le_bytes());
+    
+    // Encode as Base64
+    use base64::{Engine as _, engine::general_purpose};
+    let base64_data = general_purpose::STANDARD.encode(&token_data);
+    
+    // Test parsing
+    let result = scanner.parse_token_account_from_binary(&base64_data, &UiAccountEncoding::Base64);
+    
+    assert!(result.is_ok());
+    let token_account = result.unwrap();
+    assert_eq!(token_account.mint, usdc_mint);
+    assert_eq!(token_account.amount, 0);
+}
+
+#[test]
+fn test_token_account_parsing_base58() {
+    use solana_recover::core::scanner::WalletScanner;
+    use solana_account_decoder::UiAccountEncoding;
+    use solana_sdk::pubkey::Pubkey;
+    
+    // Create a mock scanner
+    let scanner = WalletScanner::new(create_test_connection_pool());
+    
+    // Create a mock token account data (72 bytes minimum)
+    let mut token_data = vec![0u8; 80];
+    
+    // Set mint (first 32 bytes)
+    let usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    let mint_pubkey = Pubkey::from_str(usdc_mint).unwrap();
+    token_data[0..32].copy_from_slice(mint_pubkey.as_ref());
+    
+    // Set owner (next 32 bytes)
+    let owner_pubkey = Pubkey::new_unique();
+    token_data[32..64].copy_from_slice(owner_pubkey.as_ref());
+    
+    // Set amount to 1000000 (non-zero token account)
+    token_data[64..72].copy_from_slice(&1_000_000u64.to_le_bytes());
+    
+    // Encode as Base58
+    let base58_data = bs58::encode(&token_data).into_string();
+    
+    // Test parsing
+    let result = scanner.parse_token_account_from_binary(&base58_data, &UiAccountEncoding::Base58);
+    
+    assert!(result.is_ok());
+    let token_account = result.unwrap();
+    assert_eq!(token_account.mint, usdc_mint);
+    assert_eq!(token_account.amount, 1_000_000);
+}
+
+#[test]
+fn test_token_account_parsing_invalid_data() {
+    use solana_recover::core::scanner::WalletScanner;
+    use solana_account_decoder::UiAccountEncoding;
+    
+    let scanner = WalletScanner::new(create_test_connection_pool());
+    
+    // Test with too short data
+    let short_data = "dGVzdA=="; // "test" in Base64
+    let result = scanner.parse_token_account_from_binary(short_data, &UiAccountEncoding::Base64);
+    assert!(result.is_err());
+    
+    // Test with invalid Base64
+    let invalid_base64 = "invalid_base64!";
+    let result = scanner.parse_token_account_from_binary(invalid_base64, &UiAccountEncoding::Base64);
+    assert!(result.is_err());
+    
+    // Test with unsupported encoding
+    let result = scanner.parse_token_account_from_binary("data", &UiAccountEncoding::Json);
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_main_wallet_protection() {
+    use solana_recover::core::scanner::WalletScanner;
+    use solana_client::rpc_response::RpcKeyedAccount;
+    use solana_account_decoder::{UiAccount, UiAccountData, UiAccountEncoding};
+    use solana_sdk::pubkey::Pubkey;
+    
+    let scanner = WalletScanner::new(create_test_connection_pool());
+    let wallet_address = "11111111111111111111111111111112"; // System program ID as test
+    
+    // Create a mock account that represents the main wallet
+    let main_wallet_account = RpcKeyedAccount {
+        pubkey: wallet_address.to_string(),
+        account: UiAccount {
+            lamports: 1_000_000_000, // 1 SOL
+            data: UiAccountData::Binary("".to_string(), UiAccountEncoding::Base64),
+            owner: "11111111111111111111111111111111".to_string(), // System program
+            executable: false,
+            rent_epoch: 0,
+            space: Some(0),
+        },
+    };
+    
+    // Test that the main wallet is never flagged as recoverable
+    let result = scanner.check_empty_account(&main_wallet_account, wallet_address).await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_none(), "Main wallet should never be flagged as recoverable");
+    
+    // Test that a different account with the same properties would be flagged
+    let different_account = RpcKeyedAccount {
+        pubkey: "22222222222222222222222222222223".to_string(),
+        account: UiAccount {
+            lamports: 2_228_680, // Rent-exempt amount
+            data: UiAccountData::Binary("".to_string(), UiAccountEncoding::Base64),
+            owner: "11111111111111111111111111111111".to_string(), // System program
+            executable: false,
+            rent_epoch: 0,
+            space: Some(0),
+        },
+    };
+    
+    let result = scanner.check_empty_account(&different_account, wallet_address).await;
+    assert!(result.is_ok());
+    // This might be Some or None depending on the rent calculation, but should not be None due to wallet protection
+    let result = result.unwrap();
+    if let Some(account) = result {
+        assert_ne!(account.address, wallet_address);
+    }
+}

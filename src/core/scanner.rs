@@ -6,6 +6,16 @@ use uuid::Uuid;
 use std::time::Instant;
 use chrono::Utc;
 use std::str::FromStr;
+use solana_account_decoder::UiAccountEncoding;
+use bs58;
+use base64;
+
+// Token account structure for binary parsing
+#[derive(Debug, Clone)]
+pub struct TokenAccountInfo {
+    pub mint: String,
+    pub amount: u64,
+}
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 
@@ -34,9 +44,11 @@ impl WalletScanner {
 
         match self.scan_wallet_internal(wallet_address).await {
             Ok(wallet_info) => {
-                let _scan_time = start_time.elapsed().as_millis() as u64;
+                let scan_time = start_time.elapsed().as_millis() as u64;
                 let mut result = scan_result;
                 result.status = ScanStatus::Completed;
+                let mut wallet_info = wallet_info;
+                wallet_info.scan_time_ms = scan_time;
                 result.result = Some(wallet_info);
                 Ok(result)
             }
@@ -55,14 +67,33 @@ impl WalletScanner {
 
         let client = self.connection_pool.get_client().await?;
 
-        let token_accounts = client.get_token_accounts(&pubkey).await?;
-        let total_accounts = token_accounts.len();
+        // Get all token accounts that might have recoverable SOL
+        let all_accounts = client.get_token_accounts(&pubkey).await?;
+        let total_accounts = all_accounts.len();
+
+        println!("🔍 DEBUG: Found {} total accounts for wallet {}", total_accounts, wallet_address);
+        for (i, account) in all_accounts.iter().enumerate() {
+            println!("  Account {}: {} (owner: {}, lamports: {})", i + 1, account.pubkey, account.account.owner, account.account.lamports);
+        }
 
         let mut empty_accounts: Vec<EmptyAccount> = Vec::new();
         let mut total_recoverable_lamports: u64 = 0;
+        
+        // Deduplicate accounts by pubkey to prevent double counting
+        let mut seen_accounts = std::collections::HashSet::new();
+        let mut unique_accounts = Vec::new();
+        
+        for keyed_account in all_accounts {
+            if seen_accounts.insert(keyed_account.pubkey.clone()) {
+                unique_accounts.push(keyed_account);
+            }
+        }
+        
+        println!("🔍 DEBUG: Found {} unique accounts after deduplication", unique_accounts.len());
 
-        for keyed_account in token_accounts {
-            if let Some(empty_account) = self.check_empty_account(&keyed_account).await? {
+        for keyed_account in unique_accounts {
+            if let Some(empty_account) = self.check_empty_account(&keyed_account, wallet_address).await? {
+                println!("✅ Found empty account: {} ({} lamports)", empty_account.address, empty_account.lamports);
                 total_recoverable_lamports += empty_account.lamports;
                 empty_accounts.push(empty_account);
             }
@@ -86,57 +117,197 @@ impl WalletScanner {
         })
     }
 
-    async fn check_empty_account(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount) -> Result<Option<EmptyAccount>> {
-        let account_data = &keyed_account.account.data;
+    async fn check_empty_account(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, wallet_address: &str) -> Result<Option<EmptyAccount>> {
+        let account_pubkey_str = &keyed_account.pubkey;
+        let account = &keyed_account.account;
+        
+        // PROTECTION: Never flag the main wallet address as a recoverable account
+        if account_pubkey_str == wallet_address {
+            return Ok(None);
+        }
+        
+        let owner_pubkey = Pubkey::from_str(&account.owner)
+            .map_err(|_| SolanaRecoverError::InvalidWalletAddress(account.owner.clone()))?;
 
-        if let solana_account_decoder::UiAccountData::Json(parsed) = account_data {
-            if let Some(info) = parsed.parsed.get("info") {
-                if let Some(token_amount) = info.get("tokenAmount") {
-                    if let Some(amount_str) = token_amount.get("amount") {
-                        let amount: u64 = amount_str
-                            .as_str()
-                            .unwrap_or("1")
-                            .parse()
-                            .unwrap_or(1);
+        // Case 1: Token Account (owned by SPL Token Program or Token-2022 Program)
+        if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
+            // Handle both Binary and Json data formats
+            match &account.data {
+                solana_account_decoder::UiAccountData::Binary(data_str, encoding) => {
+                    // Parse the binary data to extract token account info
+                    if let Ok(token_account) = self.parse_token_account_from_binary(data_str, encoding) {
+                        if token_account.amount == 0 && account.lamports > 0 {
+                            return Ok(Some(EmptyAccount {
+                                address: account_pubkey_str.clone(),
+                                lamports: account.lamports,
+                                owner: account.owner.clone(),
+                                mint: Some(token_account.mint),
+                            }));
+                        }
+                    }
+                }
+                solana_account_decoder::UiAccountData::Json(parsed) => {
+                    if let Some(info) = parsed.parsed.get("info") {
+                        if let Some(token_amount) = info.get("tokenAmount") {
+                            if let Some(amount_str) = token_amount.get("amount") {
+                                match amount_str.as_str().unwrap_or("0").parse::<u64>() {
+                                    Ok(amount) if amount == 0 && account.lamports > 0 => {
+                                        let owner = info.get("owner")
+                                            .and_then(|o| o.as_str())
+                                            .unwrap_or("unknown")
+                                            .to_string();
+                                        let mint = info.get("mint")
+                                            .and_then(|m| m.as_str())
+                                            .map(|m| m.to_string());
 
-                        if amount == 0 {
-                            let owner = info.get("owner")
-                                .and_then(|o| o.as_str())
-                                .unwrap_or("unknown")
-                                .to_string();
-
-                            let mint = info.get("mint")
-                                .and_then(|m| m.as_str())
-                                .map(|m| m.to_string());
-
-                            // Get rent exemption amount for token accounts
-                            // Token accounts are typically 165 bytes in size
-                            let rent_exemption = self.connection_pool.get_client().await?
-                                .get_minimum_balance_for_rent_exemption(165).await
-                                .unwrap_or(2_039_280); // Fallback to common value
-
-                            let total_balance = keyed_account.account.lamports;
-                            let recoverable_amount = if total_balance > rent_exemption {
-                                total_balance - rent_exemption
-                            } else {
-                                0
-                            };
-
-                            // Only include account if there's actually recoverable SOL
-                            if recoverable_amount > 0 {
-                                return Ok(Some(EmptyAccount {
-                                    address: keyed_account.pubkey.to_string(),
-                                    lamports: recoverable_amount, // Use recoverable amount, not total balance
-                                    owner,
-                                    mint,
-                                }));
+                                        return Ok(Some(EmptyAccount {
+                                            address: account_pubkey_str.clone(),
+                                            lamports: account.lamports,
+                                            owner,
+                                            mint,
+                                        }));
+                                    }
+                                    Ok(_) => {
+                                        // Non-zero amount, not empty
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Warning: Failed to parse token amount for {}: {}", account_pubkey_str, e);
+                                    }
+                                }
                             }
                         }
+                    }
+                }
+                _ => {
+                    eprintln!("Warning: Unsupported data format for token account: {}", account_pubkey_str);
+                }
+            }
+        } 
+        // Case 2: System Account (owned by System Program)
+        else if owner_pubkey == solana_program::system_program::id() {
+            // A system account is considered "empty" if it only holds its rent-exempt minimum
+            // and is not executable and has no data.
+            if !account.executable {
+                let client = self.connection_pool.get_client().await?;
+                let min_rent_exemption = client.get_minimum_balance_for_rent_exemption(
+                    account.space.unwrap_or(0) as usize
+                ).await?;
+
+                let is_data_empty = match &account.data {
+                    solana_account_decoder::UiAccountData::Binary(data_str, _) => data_str.is_empty(),
+                    solana_account_decoder::UiAccountData::Json(parsed) => {
+                        (parsed.parsed.is_null() ||
+                        parsed.parsed.as_object().map_or(false, |obj| obj.is_empty()) ||
+                        parsed.parsed.as_array().map_or(false, |arr| arr.is_empty()))
+                    },
+                    solana_account_decoder::UiAccountData::LegacyBinary(_) => true,
+                };
+
+                // Consider it "empty" if its lamports are close to the rent-exempt minimum
+                // and its data is empty. Use >= to catch accounts with slightly more than minimum
+                if account.lamports >= min_rent_exemption && is_data_empty {
+                    if account.lamports > 0 {
+                        return Ok(Some(EmptyAccount {
+                            address: account_pubkey_str.clone(),
+                            lamports: account.lamports,
+                            owner: account.owner.clone(),
+                            mint: None, // System accounts don't have a mint
+                        }));
+                    }
+                }
+            }
+        }
+        
+        // Case 3: Other program accounts that might be empty and hold recoverable SOL
+        // This catches accounts from other programs that might have zero balance but hold rent
+        else {
+            // For non-system, non-token accounts, check if they have data and are executable
+            // If they're not executable and have minimal data, they might be recoverable
+            if !account.executable && account.lamports > 0 {
+                let client = self.connection_pool.get_client().await?;
+                let min_rent_exemption = client.get_minimum_balance_for_rent_exemption(
+                    account.space.unwrap_or(0) as usize
+                ).await?;
+
+                // Check if the account holds approximately rent-exempt amount
+                // Allow some tolerance for small variations
+                let tolerance = min_rent_exemption / 10; // 10% tolerance
+                let is_rent_exempt = account.lamports >= min_rent_exemption.saturating_sub(tolerance) && 
+                                    account.lamports <= min_rent_exemption.saturating_add(tolerance);
+
+                if is_rent_exempt {
+                    // Check if data is empty or minimal
+                    let is_data_empty = match &account.data {
+                        solana_account_decoder::UiAccountData::Binary(data_str, _) => {
+                            data_str.is_empty() || data_str.len() < 50 // Small threshold for "minimal" data
+                        },
+                        solana_account_decoder::UiAccountData::Json(parsed) => {
+                            (parsed.parsed.is_null() ||
+                            parsed.parsed.as_object().map_or(false, |obj| obj.is_empty()) ||
+                            parsed.parsed.as_array().map_or(false, |arr| arr.is_empty()))
+                        },
+                        solana_account_decoder::UiAccountData::LegacyBinary(_) => true,
+                    };
+
+                    if is_data_empty {
+                        return Ok(Some(EmptyAccount {
+                            address: account_pubkey_str.clone(),
+                            lamports: account.lamports,
+                            owner: account.owner.clone(),
+                            mint: None, // Non-token accounts don't have a mint
+                        }));
                     }
                 }
             }
         }
 
         Ok(None)
+    }
+
+    // Helper method to parse token account from binary data
+    pub fn parse_token_account_from_binary(&self, data_str: &str, encoding: &UiAccountEncoding) -> Result<TokenAccountInfo> {
+        // Decode based on the encoding type
+        let decoded_data = match encoding {
+            UiAccountEncoding::Base64 => {
+                use base64::{Engine as _, engine::general_purpose};
+                general_purpose::STANDARD.decode(data_str)
+                    .map_err(|_| SolanaRecoverError::InternalError("Failed to decode Base64 data".to_string()))?
+            }
+            UiAccountEncoding::Base58 => {
+                bs58::decode(data_str)
+                    .into_vec()
+                    .map_err(|_| SolanaRecoverError::InternalError("Failed to decode Base58 data".to_string()))?
+            }
+            _ => {
+                return Err(SolanaRecoverError::InternalError("Unsupported encoding for token account".to_string()));
+            }
+        };
+
+        // Token account structure (simplified):
+        // - 32 bytes: mint (Pubkey)
+        // - 32 bytes: owner (Pubkey) 
+        // - 8 bytes: amount (u64)
+        // - ... other fields we don't need for empty detection
+        
+        // Increased safety check - ensure we have at least 72 bytes for mint + owner + amount
+        if decoded_data.len() < 72 {
+            return Err(SolanaRecoverError::InternalError("Invalid token account data length".to_string()));
+        }
+
+        // Extract mint (first 32 bytes)
+        let mut mint_array = [0u8; 32];
+        mint_array.copy_from_slice(&decoded_data[0..32]);
+        let mint_pubkey = Pubkey::new_from_array(mint_array);
+
+        // Extract amount (bytes 64-72, after mint and owner)
+        let amount_bytes = &decoded_data[64..72];
+        let mut amount_array = [0u8; 8];
+        amount_array.copy_from_slice(amount_bytes);
+        let amount = u64::from_le_bytes(amount_array);
+
+        Ok(TokenAccountInfo {
+            mint: mint_pubkey.to_string(),
+            amount,
+        })
     }
 }

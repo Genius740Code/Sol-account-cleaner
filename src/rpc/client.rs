@@ -50,19 +50,44 @@ impl RpcClientWrapper {
         self.rate_limiter.acquire().await?;
         
         let token_program_id = spl_token::id();
+        let token_2022_program_id = spl_token_2022::id();
         let client = self.client.clone();
         let pubkey = *pubkey;
         let timeout = self.request_timeout;
         
-        tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_token_accounts_by_owner(
-                &pubkey,
-                TokenAccountsFilter::ProgramId(token_program_id),
-            )
+        // Fetch standard Token accounts
+        let standard_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
+            let client = client.clone();
+            move || {
+                client.get_token_accounts_by_owner(
+                    &pubkey,
+                    TokenAccountsFilter::ProgramId(token_program_id),
+                )
+            }
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)
+        .map_err(SolanaRecoverError::RpcClientError)?;
+        
+        // Fetch Token-2022 accounts
+        let token_2022_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
+            let client = client.clone();
+            move || {
+                client.get_token_accounts_by_owner(
+                    &pubkey,
+                    TokenAccountsFilter::ProgramId(token_2022_program_id),
+                )
+            }
+        })).await
+        .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
+        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
+        .map_err(SolanaRecoverError::RpcClientError)?;
+        
+        // Combine results from both programs
+        let mut all_accounts = standard_accounts;
+        all_accounts.extend(token_2022_accounts);
+        
+        Ok(all_accounts)
     }
 
     pub async fn get_balance(&self, pubkey: &Pubkey) -> Result<u64> {
