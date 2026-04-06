@@ -2,6 +2,8 @@
 name = "solana_recover"
 version = "1.0.1"
 edition = "2021"
+description = "A comprehensive Solana wallet recovery and account management tool"
+license = "MIT"
 
 [features]
 default = ["scanner", "recovery"]
