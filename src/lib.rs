@@ -131,6 +131,7 @@ pub async fn scan_wallet(
 /// 
 /// * `request` - The recovery request containing wallet and destination info
 /// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// * `wallet_manager` - Optional shared wallet manager instance
 /// 
 /// # Returns
 /// 
@@ -139,10 +140,11 @@ pub async fn scan_wallet(
 /// # Example
 /// 
 /// ```rust,no_run
-/// use solana_recover::{recover_sol, RecoveryRequest};
+/// use solana_recover::{recover_sol, RecoveryRequest, wallet::WalletManager};
 /// 
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let wallet_manager = std::sync::Arc::new(WalletManager::new());
 ///     let request = RecoveryRequest {
 ///         // ... populate request fields
 ///         id: uuid::Uuid::new_v4(),
@@ -156,7 +158,7 @@ pub async fn scan_wallet(
 ///         created_at: chrono::Utc::now(),
 ///     };
 ///     
-///     let result = recover_sol(&request, None).await?;
+///     let result = recover_sol(&request, None, Some(wallet_manager)).await?;
 ///     println!("Recovered {} SOL", result.net_sol);
 ///     Ok(())
 /// }
@@ -164,6 +166,7 @@ pub async fn scan_wallet(
 pub async fn recover_sol(
     request: &RecoveryRequest,
     rpc_endpoint: Option<&str>,
+    wallet_manager: Option<std::sync::Arc<wallet::WalletManager>>,
 ) -> core::Result<RecoveryResult> {
     use rpc::ConnectionPool;
     use core::{RpcEndpoint, RecoveryManager, RecoveryConfig};
@@ -181,7 +184,7 @@ pub async fn recover_sol(
     
     let config = RecoveryConfig::default();
     let fee_structure = core::FeeStructure::default(); // Can be customized
-    let wallet_manager = Arc::new(WalletManager::new());
+    let wallet_manager = wallet_manager.unwrap_or_else(|| Arc::new(WalletManager::new()));
     let recovery_manager = RecoveryManager::new(connection_pool, wallet_manager, config, fee_structure);
     
     recovery_manager.recover_sol(request).await

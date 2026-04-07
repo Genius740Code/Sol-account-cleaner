@@ -133,6 +133,7 @@ Scan a single wallet for recoverable SOL.
   "wallet_address": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
   "fee_percentage": 0.15,
   "include_empty_addresses": true,
+  "dev_mode": true,
   "timeout_seconds": 30
 }
 ```
@@ -141,6 +142,7 @@ Scan a single wallet for recoverable SOL.
 - `wallet_address` (string, required): Solana wallet public key
 - `fee_percentage` (float, optional): Fee percentage (0.0-1.0, default: 0.15)
 - `include_empty_addresses` (boolean, optional): Include empty account addresses (default: true)
+- `dev_mode` (boolean, optional): Show detailed developer information including wallet addresses and account details (default: false)
 - `timeout_seconds` (integer, optional): Request timeout (default: 30)
 
 **Response:**

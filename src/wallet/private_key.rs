@@ -89,15 +89,12 @@ impl WalletProvider for PrivateKeyProvider {
             let mut tx: Transaction = bincode::deserialize(transaction)
                 .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to deserialize transaction: {}", e)))?;
             
-            // Sign the transaction
+            // Sign the transaction with the keypair
             tx.sign(&[&keypair], tx.message.recent_blockhash);
             
-            // Return the signature of the first signer (which should be our keypair)
-            if let Some(signature) = tx.signatures.get(0) {
-                Ok(signature.as_ref().to_vec())
-            } else {
-                Err(SolanaRecoverError::InternalError("No signature found in signed transaction".to_string()))
-            }
+            // Return the full serialized signed transaction, not just the signature
+            bincode::serialize(&tx)
+                .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to serialize signed transaction: {}", e)))
         } else {
             Err(SolanaRecoverError::AuthenticationError(
                 "Invalid PrivateKey connection".to_string()
@@ -113,7 +110,7 @@ impl WalletProvider for PrivateKeyProvider {
 }
 
 impl PrivateKeyProvider {
-    fn parse_private_key(&self, private_key: &str) -> Result<Keypair> {
+    pub fn parse_private_key(&self, private_key: &str) -> Result<Keypair> {
         // Try different formats: base58, hex, or array format
         let mut key_bytes = None;
         

@@ -138,6 +138,7 @@ solana-recover scan [OPTIONS] <ADDRESS>
 #   -f, --format <FORMAT>  Output format [json|table] [default: table]
 #   -c, --config <FILE>   Configuration file path
 #   --log-level <LEVEL>   Log level [trace|debug|info|warn|error]
+#   -D, --dev              Show detailed developer information (wallet addresses, empty account details)
 ```
 
 #### Batch Processing
@@ -148,6 +149,7 @@ solana-recover batch [OPTIONS] <FILE>
 #   -o, --output <DIR>     Output directory [default: ./results]
 #   -c, --config <FILE>    Configuration file path
 #   --log-level <LEVEL>    Log level
+#   -D, --dev              Show detailed developer information (wallet addresses, empty account details)
 ```
 
 #### API Server
@@ -164,8 +166,23 @@ solana-recover server [OPTIONS]
 
 #### Single Wallet Scan Results
 
+**Normal Mode (Default):**
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────┐
+│                    Wallet Scan Results                     │
+├─────────────────────────────────────────────────────────────┤
+│ Total Accounts: 25                                          │
+│ Empty Accounts: 8                                          │
+│ Recoverable: 0.00203928 SOL                                │
+│ Service Fee: 0.00030589 SOL (15%)                          │
+│ Net Recovery: 0.00173339 SOL                               │
+│ Scan Time: 1.25 seconds                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Developer Mode (--dev/-D):**
+```
+┌─────────────────────────────────────────────────────┐
 │                    Wallet Scan Results                     │
 ├─────────────────────────────────────────────────────────────┤
 │ Wallet Address: 9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM │
@@ -182,6 +199,7 @@ Empty Account Addresses:
 - BcDeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdef
 - ...
 ```
+*(Only shown in developer mode with --dev/-D flag)*
 
 #### JSON Output Format
 

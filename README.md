@@ -190,23 +190,36 @@ solana-recover --wallet <ADDRESS>
 solana-recover --wallet <ADDRESS> --destination <DESTINATION>
 ```
 
+**Developer mode (show detailed information):**
+```bash
+solana-recover --wallet <ADDRESS> --dev
+# or short form
+solana-recover --wallet <ADDRESS> -D
+```
+
 #### **Advanced Usage**
 
 **Show total claimable SOL:**
 ```bash
 solana-recover show --targets "wallet:addr1,addr2,addr3"
 solana-recover show --targets "key:privkey1,privkey2"
+# Show with detailed information
+solana-recover show --targets "wallet:addr1,addr2,addr3" --dev
 ```
 
 **Reclaim SOL:**
 ```bash
 solana-recover reclaim --targets "wallet:addr1,addr2" --destination "destination_wallet_address"
 solana-recover reclaim --targets "key:privkey1,privkey2" --destination "dest_wallet_address"
+# Reclaim with detailed information
+solana-recover reclaim --targets "wallet:addr1,addr2" --destination "dest_wallet_address" --dev
 ```
 
 **Batch processing:**
 ```bash
 solana-recover batch wallets.txt
+# Batch with detailed information
+solana-recover batch wallets.txt --dev
 ```
 
 #### **Examples**
@@ -223,6 +236,10 @@ solana-recover show --targets "wallet:B7bQUSYnD56Vk7jEAqU4MWLJQ9LgVnKyWskivPhZQc
 
 # Force reclaim without confirmation
 solana-recover --wallet <ADDRESS> --destination <DEST> --force
+
+# Developer mode - show wallet address and empty account details
+solana-recover --wallet <ADDRESS> --dev
+solana-recover --wallet <ADDRESS> -D
 ```
 
 ### Simple CLI Tool
