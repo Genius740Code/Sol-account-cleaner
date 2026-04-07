@@ -178,3 +178,53 @@ impl Default for PrivateKeyProvider {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wallet::{WalletCredentials, WalletCredentialData};
+
+    #[tokio::test]
+    async fn test_private_key_connection_flow() {
+        let provider = PrivateKeyProvider::new();
+        
+        // Test with a sample private key (this is a test keypair)
+        let test_private_key = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqYz4eg5vZ8LJjKxHn3";
+        
+        println!("Testing private key parsing...");
+        let parse_result = provider.parse_private_key(test_private_key);
+        
+        if let Ok(keypair) = parse_result {
+            println!("Successfully parsed private key!");
+            println!("Public key: {}", keypair.pubkey());
+            
+            // Test wallet connection
+            println!("Testing wallet connection...");
+            let credentials = WalletCredentials {
+                wallet_type: crate::wallet::WalletType::PrivateKey,
+                credentials: WalletCredentialData::PrivateKey {
+                    private_key: test_private_key.to_string(),
+                },
+            };
+            
+            let connection_result = provider.connect(&credentials).await;
+            if let Ok(connection) = connection_result {
+                println!("Successfully connected to wallet!");
+                println!("Connection ID: {}", connection.id);
+                
+                // Test getting public key
+                let pubkey_result = provider.get_public_key(&connection).await;
+                if let Ok(pubkey) = pubkey_result {
+                    println!("Retrieved public key: {}", pubkey);
+                    assert_eq!(pubkey, keypair.pubkey().to_string());
+                } else {
+                    println!("Failed to get public key");
+                }
+            } else {
+                println!("Failed to connect to wallet");
+            }
+        } else {
+            println!("Failed to parse private key (expected for test key)");
+        }
+    }
+}

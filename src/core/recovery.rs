@@ -228,17 +228,10 @@ impl RecoveryManager {
                     crate::wallet::private_key::PrivateKeyProvider::new()
                         .parse_private_key(private_key)
                         .map_err(|_| SolanaRecoverError::AuthenticationError("Failed to parse private key".to_string()))
-                        .map(|kp| kp.pubkey())
-                        .unwrap_or_else(|_| {
-                            // Fallback: we need to get destination from outer scope
-                            // Let's use a default approach - this will be fixed by ensuring destination is available
-                            solana_sdk::signature::Keypair::from_bytes(&[0u8; 64]).unwrap().pubkey()
-                        })
+                        .map(|kp| kp.pubkey())?
                 }
                 _ => {
-                    // For other wallet types, we need to get destination from outer scope
-                    // This is a workaround - we'll need to restructure this
-                    solana_sdk::signature::Keypair::from_bytes(&[0u8; 64]).unwrap().pubkey()
+                    return Err(SolanaRecoverError::AuthenticationError("Invalid wallet connection type for private key recovery".to_string()));
                 }
             };
 
@@ -254,11 +247,13 @@ impl RecoveryManager {
                         // Parse private key to get keypair
                         crate::wallet::private_key::PrivateKeyProvider::new()
                             .parse_private_key(private_key)
-                            .map_err(|_| SolanaRecoverError::AuthenticationError("Failed to parse private key".to_string()))
+                            .map_err(|_| SolanaRecoverError::AuthenticationError("Failed to parse private key".to_string()))?
                     }
-                    _ => return Err(SolanaRecoverError::AuthenticationError("Invalid wallet connection type".to_string())),
+                    _ => {
+                        return Err(SolanaRecoverError::AuthenticationError("Invalid wallet connection type for private key recovery".to_string()));
+                    }
                 }
-            }?;
+            };
 
             // Sign with enhanced security - now returns full signed transaction
             signed_transaction_bytes = self.secure_sign_transaction_with_keypair(
