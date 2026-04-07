@@ -93,5 +93,5 @@ metrics-exporter-prometheus = "0.12"
 governor           = "0.6"
 jsonwebtoken       = "9.0"
 lazy_static        = "1.4"
-redis              = { version = "0.24", features = ["tokio-comp"] }
+redis              = { version = "0.25", features = ["tokio-comp"] }
 base64 = "0.22.1"

@@ -198,7 +198,7 @@ impl RecoveryManager {
         }
 
         // Build recovery transaction
-        let (solana_transaction, fee_payer) = self.build_recovery_transaction(
+        let (solana_transaction, _fee_payer) = self.build_recovery_transaction(
             accounts,
             destination_pubkey,
             &rpc_client,
@@ -218,11 +218,11 @@ impl RecoveryManager {
             // Additional security: verify wallet has sufficient balance for fees
             self.verify_wallet_balance(&connection, accounts.len()).await?;
 
-            let serialized_tx = bincode::serialize(&solana_transaction)
+            let _serialized_tx = bincode::serialize(&solana_transaction)
                 .map_err(|e| SolanaRecoverError::SerializationError(e.to_string()))?;
 
             // Get wallet public key from connection for signing
-            let wallet_pubkey = match &connection.connection_data {
+            let _wallet_pubkey = match &connection.connection_data {
                 crate::wallet::ConnectionData::PrivateKey { private_key } => {
                     // Parse private key to get public key
                     crate::wallet::private_key::PrivateKeyProvider::new()
@@ -409,7 +409,7 @@ impl RecoveryManager {
         for chunk in account_pubkeys.chunks(batch_size) {
             let account_infos = rpc_client.get_multiple_accounts(chunk).await?;
             
-            for (account_pubkey, account_info_opt) in chunk.iter().zip(account_infos) {
+            for (_account_pubkey, account_info_opt) in chunk.iter().zip(account_infos) {
                 if let Some(account_info) = account_info_opt {
                     // Parse owner as Pubkey
                     let owner_pubkey = account_info.owner.parse::<Pubkey>()
@@ -681,23 +681,6 @@ impl RecoveryManager {
             .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to serialize signed transaction: {}", e)))
     }
     
-    async fn secure_sign_transaction(
-        &self,
-        connection_id: &str,
-        transaction_data: &[u8],
-        _audit_signature: &str, // Audit data stored separately, not mixed into signature
-    ) -> Result<Vec<u8>> {
-        // Sign only the transaction data - audit data should be stored separately
-        let signed_transaction_bytes = self.wallet_manager.sign_with_wallet(connection_id, transaction_data).await?;
-        
-        // Verify the signature by deserializing signed transaction
-        let _signed_tx: Transaction = bincode::deserialize(&signed_transaction_bytes)
-            .map_err(|e| SolanaRecoverError::InternalError(format!("Failed to verify signed transaction: {:?}", e)))?;
-        
-        // Return the full signed transaction bytes
-        Ok(signed_transaction_bytes)
-    }
-    
     async fn submit_transaction_securely(&self, transaction: &Transaction) -> Result<Signature> {
         let rpc_client = self.connection_pool.get_client().await?;
         
@@ -763,45 +746,6 @@ impl RecoveryManager {
         Ok((total_balance, estimated_fees))
     }
 
-    async fn calculate_batch_amounts_securely(
-        &self,
-        accounts: &[String],
-        rpc_client: &Arc<RpcClientWrapper>,
-    ) -> Result<(u64, u64)> {
-        let mut total_balance = 0u64;
-        let mut valid_accounts = 0u64;
-
-        // Get rent exemption amount for token accounts (typically 165 bytes)
-        let rent_exemption = rpc_client.get_minimum_balance_for_rent_exemption(165).await
-            .unwrap_or(2_039_280); // Fallback to common value
-
-        for account_address in accounts {
-            let pubkey = account_address.parse::<Pubkey>()
-                .map_err(|_| SolanaRecoverError::InvalidInput(
-                    format!("Invalid account address: {}", account_address)
-                ))?;
-
-            // Get account info with commitment level
-            let account = rpc_client.get_account_info(&pubkey).await?;
-            
-            // Calculate recoverable amount (balance minus rent exemption)
-            let recoverable_amount = if account.lamports > rent_exemption {
-                account.lamports - rent_exemption
-            } else {
-                0
-            };
-            
-            if recoverable_amount >= self.config.min_balance_lamports {
-                total_balance += recoverable_amount;
-                valid_accounts += 1;
-            }
-        }
-
-        // More accurate fee estimation
-        let estimated_fees = valid_accounts * 5_000; // ~5000 lamports per transfer
-        Ok((total_balance, estimated_fees))
-    }
-    
     async fn wait_for_transaction_confirmation(&self, signature: &Signature) -> Result<()> {
         let rpc_client = self.connection_pool.get_client().await?;
         

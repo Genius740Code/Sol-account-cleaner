@@ -3,8 +3,9 @@
 use clap::{Parser, Subcommand};
 use solana_recover::{scan_wallet, recover_sol, WalletInfo, RecoveryRequest};
 use solana_recover::wallet::{WalletManager, WalletCredentials, WalletType, WalletCredentialData};
-use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::signature::{Signer, SeedDerivable};
 use std::io::{self, Write};
+use zeroize::Zeroize;
 
 #[derive(Parser)]
 #[command(name = "solana-recover")]
@@ -96,18 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle private key mode (scan + reclaim)
     if let Some(private_key) = &cli.private_key {
-        // Derive wallet address from private key
-        let key_bytes = bs58::decode(private_key)
-            .into_vec()
-            .map_err(|_| "Invalid private key format: not valid base58")?;
-        
-        if key_bytes.len() != 64 {
-            return Err("Invalid private key format: expected 64 bytes".into());
-        }
-        
-        let keypair = Keypair::from_bytes(&key_bytes)
-            .map_err(|_| "Invalid private key format: cannot create keypair")?;
-        let wallet_address = keypair.pubkey().to_string();
+        // Derive wallet address from private key using the same parsing logic as PrivateKeyProvider
+        let wallet_address = derive_address_from_private_key(private_key)?;
         
         println!("Scanning wallet: {}", wallet_address);
         println!("Using default mainnet endpoint");
@@ -503,17 +494,56 @@ async fn reclaim_sol_from_targets(
 }
 
 fn derive_address_from_private_key(private_key: &str) -> Result<String, Box<dyn std::error::Error>> {
-    use solana_sdk::signature::{Keypair, Signer};
+    use solana_sdk::signature::Keypair;
     use bs58;
     
-    let keypair_bytes = bs58::decode(private_key)
-        .into_vec()
-        .map_err(|_| "Invalid private key format")?;
+    // Try different formats: base58, hex, or array format (same logic as PrivateKeyProvider)
+    let mut key_bytes = None;
     
-    let keypair = Keypair::from_bytes(&keypair_bytes)
-        .map_err(|_| "Invalid private key")?;
+    // Try base58 format (most common for Solana)
+    if let Ok(bytes) = bs58::decode(private_key).into_vec() {
+        if bytes.len() == 64 {
+            key_bytes = Some(bytes);
+        }
+    }
     
-    Ok(keypair.pubkey().to_string())
+    // Try hex format
+    if key_bytes.is_none() {
+        let hex_str = private_key.strip_prefix("0x").unwrap_or(private_key);
+        if let Ok(bytes) = hex::decode(hex_str) {
+            if bytes.len() == 32 {
+                // For 32-byte seeds, we need to create a keypair
+                if let Ok(kp) = Keypair::from_seed(&bytes) {
+                    return Ok(kp.pubkey().to_string());
+                }
+            } else if bytes.len() == 64 {
+                key_bytes = Some(bytes);
+            }
+        }
+    }
+    
+    // Try JSON array format
+    if key_bytes.is_none() {
+        if let Ok(bytes_vec) = serde_json::from_str::<Vec<u8>>(private_key) {
+            if bytes_vec.len() == 32 {
+                if let Ok(kp) = Keypair::from_seed(&bytes_vec) {
+                    return Ok(kp.pubkey().to_string());
+                }
+            } else if bytes_vec.len() == 64 {
+                key_bytes = Some(bytes_vec);
+            }
+        }
+    }
+    
+    // If we have 64-byte keypair data, use it directly
+    if let Some(mut bytes) = key_bytes {
+        let result = Keypair::from_bytes(&bytes);
+        bytes.zeroize(); // Immediately zeroize after use
+        let keypair = result.map_err(|_| "Invalid private key format. Expected base58, hex, or array format.")?;
+        return Ok(keypair.pubkey().to_string());
+    }
+    
+    Err("Invalid private key format. Expected base58, hex, or array format.".into())
 }
 
 fn print_total_claim_result(result: &TotalClaimResult, dev: bool) {
