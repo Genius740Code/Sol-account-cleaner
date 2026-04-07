@@ -20,10 +20,10 @@ Solana Recover supports multiple wallet providers out of the box:
 
 | Provider | Type | Authentication | Signing | Enterprise Ready |
 |----------|-------|----------------|--------|------------------|
-| Turnkey | API-based | ✅ | ✅ |
-| Phantom | Browser Extension | ✅ | ❌ |
-| Solflare | Browser Extension | ✅ | ❌ |
-| Custom | SDK | ✅ | ✅ |
+| Turnkey | API-based | ✓ | ✓ |
+| Phantom | Browser Extension | ✓ | ✗ |
+| Solflare | Browser Extension | ✓ | ✗ |
+| Custom | SDK | ✓ | ✓ |
 
 ### Provider Comparison
 

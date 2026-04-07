@@ -180,13 +180,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Performing health check...");
     match api_client.health_check().await {
         Ok(health) => {
-            info!("✅ API is healthy");
+            info!("✓ API is healthy");
             info!("Status: {}", health.status);
             info!("Version: {}", health.version);
             info!("Timestamp: {}", health.timestamp);
         }
         Err(e) => {
-            error!("❌ Health check failed: {}", e);
+            error!("✗ Health check failed: {}", e);
             error!("Make sure the Solana Recover API server is running on http://localhost:8080");
             return Err(e);
         }
@@ -209,7 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         match api_client.scan_wallet(address, Some(0.15)).await {
             Ok(response) => {
-                info!("✅ Scan completed for wallet: {}", address);
+                info!("✓ Scan completed for wallet: {}", address);
                 info!("Scan ID: {}", response.id);
                 info!("Status: {}", response.status);
                 
@@ -234,7 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(e) => {
-                error!("❌ Failed to scan wallet {}: {}", address, e);
+                error!("✗ Failed to scan wallet {}: {}", address, e);
             }
         }
         
@@ -253,7 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(response) => {
             let duration = start_time.elapsed();
             
-            info!("✅ Batch scan completed successfully!");
+            info!("✓ Batch scan completed successfully!");
             info!("Batch ID: {}", response.id);
             info!("Total wallets: {}", response.total_wallets);
             info!("Successful scans: {}", response.successful_scans);
@@ -272,8 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match result.status.as_str() {
                     "completed" => {
                         if let Some(wallet_info) = &result.result {
-                            info!(
-                                "✅ {}: {:.9} SOL recoverable ({} accounts, {} empty)",
+                            info!("OK {}: {:.9} SOL recoverable ({} accounts, {} empty)",
                                 result.wallet_address,
                                 wallet_info.recoverable_sol,
                                 wallet_info.total_accounts,
@@ -282,20 +281,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     "failed" => {
-                        error!(
-                            "❌ {}: Failed - {}",
+                        error!("ERROR {}: Failed - {}",
                             result.wallet_address,
                             result.error.as_deref().unwrap_or("Unknown error")
                         );
                     }
                     _ => {
-                        warn!("⏳ {}: Status: {}", result.wallet_address, result.status);
+                        warn!("WARNING {}: Status: {}", result.wallet_address, result.status);
                     }
                 }
             }
         }
         Err(e) => {
-            error!("❌ Batch scan failed: {}", e);
+            error!("✗ Batch scan failed: {}", e);
         }
     }
     
@@ -331,7 +329,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             warn!("Expected error for invalid address, but got success");
         }
         Err(e) => {
-            info!("✅ Correctly handled invalid address error: {}", e);
+            info!("✓ Correctly handled invalid address error: {}", e);
         }
     }
     
@@ -342,7 +340,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             warn!("Expected error for invalid fee percentage, but got success");
         }
         Err(e) => {
-            info!("✅ Correctly handled invalid fee percentage error: {}", e);
+            info!("✓ Correctly handled invalid fee percentage error: {}", e);
         }
     }
     
@@ -353,7 +351,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             warn!("Expected error for empty batch, but got success");
         }
         Err(e) => {
-            info!("✅ Correctly handled empty batch error: {}", e);
+            info!("✓ Correctly handled empty batch error: {}", e);
         }
     }
     

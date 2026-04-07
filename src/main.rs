@@ -109,24 +109,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|_| "Invalid private key format: cannot create keypair")?;
         let wallet_address = keypair.pubkey().to_string();
         
-        println!("🔍 Scanning wallet: {}", wallet_address);
-        println!("📍 Using default mainnet endpoint");
+        println!("Scanning wallet: {}", wallet_address);
+        println!("Using default mainnet endpoint");
         println!();
 
         let start_time = std::time::Instant::now();
         let result = scan_wallet(&wallet_address, None).await?;
         let elapsed = start_time.elapsed();
 
-        print!("✅ Scan completed in {}ms\n", elapsed.as_millis());
+        print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
         print_scan_result(&result, cli.dev);
 
         // Auto-reclaim if SOL is available - no confirmation needed for private key
         if result.recoverable_sol > 0.0 {
             let destination = cli.destination.as_ref().unwrap_or(&wallet_address);
             
-            println!("✅ Private key validation successful");
+            println!("✓ Private key validation successful");
             println!();
-            println!("🔄 Reclaiming SOL to: {}", destination);
+            println!("Reclaiming SOL to: {}", destination);
 
             let empty_account_addresses: Vec<String> = result.empty_account_addresses.clone();
             
@@ -162,50 +162,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Check the actual recovery status, not just Ok()
                     match recovery_result.status {
                         solana_recover::core::types::RecoveryStatus::Completed => {
-                            print!("✅ Reclamation completed in {}ms\n", elapsed.as_millis());
-                            println!("💎 Successfully reclaimed {:.9} SOL!", recovery_result.net_sol);
+                            print!("✓ Reclamation completed in {}ms\n", elapsed.as_millis());
+                            println!("Successfully reclaimed {:.9} SOL!", recovery_result.net_sol);
                         }
                         solana_recover::core::types::RecoveryStatus::Failed => {
-                            print!("❌ Reclamation failed in {}ms\n", elapsed.as_millis());
-                            println!("❌ Error: {}", recovery_result.error.unwrap_or_else(|| "Unknown error".to_string()));
+                            print!("✗ Reclamation failed in {}ms\n", elapsed.as_millis());
+                            println!("Error: {}", recovery_result.error.unwrap_or_else(|| "Unknown error".to_string()));
                         }
                         _ => {
-                            print!("⚠️  Reclamation incomplete in {}ms\n", elapsed.as_millis());
-                            println!("⚠️  Status: {:?}", recovery_result.status);
+                            print!("⚠ Reclamation incomplete in {}ms\n", elapsed.as_millis());
+                            println!("⚠ Status: {:?}", recovery_result.status);
                         }
                     }
                 }
                 Err(e) => {
-                    println!("❌ Reclamation failed: {}", e);
+                    println!("✗ Reclamation failed: {}", e);
                 }
             }
         } else {
             println!();
-            println!("💸 No SOL available to reclaim from this wallet.");
+            println!("No SOL available to reclaim from this wallet.");
         }
     }
     // Handle wallet address mode (scan only)
     else if let Some(wallet_address) = &cli.wallet {
-        println!("🔍 Scanning wallet: {}", wallet_address);
-        println!("📍 Using default mainnet endpoint");
+        println!("Scanning wallet: {}", wallet_address);
+        println!("Using default mainnet endpoint");
         println!();
 
         let start_time = std::time::Instant::now();
         let result = scan_wallet(wallet_address, None).await?;
         let elapsed = start_time.elapsed();
 
-        print!("✅ Scan completed in {}ms\n", elapsed.as_millis());
+        print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
         print_scan_result(&result, cli.dev);
     }
 
     // Handle subcommands
     match cli.command {
         Some(Commands::Scan { address, rpc_endpoint, dev }) => {
-            println!("🔍 Scanning wallet: {}", address);
+            println!("Scanning wallet: {}", address);
             if let Some(endpoint) = &rpc_endpoint {
-                println!("📍 Using RPC endpoint: {}", endpoint);
+                println!("Using RPC endpoint: {}", endpoint);
             } else {
-                println!("📍 Using default mainnet endpoint");
+                println!("Using default mainnet endpoint");
             }
             println!();
 
@@ -213,15 +213,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let result = scan_wallet(&address, rpc_endpoint.as_deref()).await?;
             let elapsed = start_time.elapsed();
 
-            print!("✅ Scan completed in {}ms\n", elapsed.as_millis());
+            print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
             print_scan_result(&result, dev);
         }
         Some(Commands::Show { targets, rpc_endpoint, dev }) => {
-            println!("💰 Calculating total claimable SOL...");
+            println!("Calculating total claimable SOL...");
             if let Some(endpoint) = &rpc_endpoint {
-                println!("📍 Using RPC endpoint: {}", endpoint);
+                println!("Using RPC endpoint: {}", endpoint);
             } else {
-                println!("📍 Using default mainnet endpoint");
+                println!("Using default mainnet endpoint");
             }
             println!();
 
@@ -229,27 +229,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let total = calculate_total_claimable(&targets, rpc_endpoint.as_deref(), dev).await?;
             let elapsed = start_time.elapsed();
 
-            print!("✅ Calculation completed in {}ms\n", elapsed.as_millis());
+            print!("✓ Calculation completed in {}ms\n", elapsed.as_millis());
             print_total_claim_result(&total, dev);
         }
         Some(Commands::Reclaim { targets, destination, rpc_endpoint, force, dev }) => {
-            println!("🔄 Reclaiming SOL from empty accounts...");
+            println!("Reclaiming SOL from empty accounts...");
             if let Some(endpoint) = &rpc_endpoint {
-                println!("📍 Using RPC endpoint: {}", endpoint);
+                println!("Using RPC endpoint: {}", endpoint);
             } else {
-                println!("📍 Using default mainnet endpoint");
+                println!("Using default mainnet endpoint");
             }
-            println!("💾 Destination: {}", destination);
+            println!("Destination: {}", destination);
             println!();
 
             if !force {
-                println!("⚠️  This will close empty token accounts and transfer their rent exemption SOL to {}", destination);
+                println!("⚠ This will close empty token accounts and transfer their rent exemption SOL to {}", destination);
                 print!("Are you sure you want to continue? [y/N]: ");
                 io::stdout().flush()?;
                 let mut input = String::new();
                 io::stdin().read_line(&mut input)?;
                 if !input.trim().to_lowercase().starts_with('y') {
-                    println!("❌ Reclamation cancelled");
+                    println!("✗ Reclamation cancelled");
                     return Ok(());
                 }
             }
@@ -262,7 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             print_reclaim_result(&result, dev);
         }
         Some(Commands::Batch { file, dev }) => {
-            println!("📁 Loading wallets from: {}", file);
+            println!("Loading wallets from: {}", file);
             
             let content = std::fs::read_to_string(&file)?;
             let wallets: Vec<String> = content
@@ -272,11 +272,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect();
 
             if wallets.is_empty() {
-                eprintln!("❌ No wallet addresses found in file");
+                eprintln!("✗ No wallet addresses found in file");
                 std::process::exit(1);
             }
 
-            println!("📊 Found {} wallet addresses to scan", wallets.len());
+            println!("Found {} wallet addresses to scan", wallets.len());
             println!();
 
             let mut total_recoverable = 0.0;
@@ -284,23 +284,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             for (i, wallet) in wallets.iter().enumerate() {
                 let wallet_display = if dev { wallet.clone() } else { "[wallet address hidden]".to_string() };
-                print!("🔍 Scanning wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
+                print!("Scanning wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
                 io::stdout().flush()?;
 
                 match scan_wallet(wallet, None).await {
                     Ok(result) => {
                         successful_scans += 1;
                         total_recoverable += result.recoverable_sol;
-                        println!("✅ {:.9} SOL", result.recoverable_sol);
+                        println!("✓ {:.9} SOL", result.recoverable_sol);
                     }
                     Err(e) => {
-                        println!("❌ {}", e);
+                        println!("✗ {}", e);
                     }
                 }
             }
 
             println!();
-            println!("📊 Batch Scan Summary:");
+            println!("Batch Scan Summary:");
             println!("  Total wallets: {}", wallets.len());
             println!("  Successful scans: {}", successful_scans);
             println!("  Failed scans: {}", wallets.len() - successful_scans);
@@ -421,7 +421,7 @@ async fn reclaim_sol_from_targets(
         } else { 
             "[wallet address hidden]".to_string() 
         };
-        print!("🔄 Reclaiming from wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
+        print!("Reclaiming from wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
         io::stdout().flush()?;
         
         let scan_address = if is_private_keys {
@@ -467,27 +467,27 @@ async fn reclaim_sol_from_targets(
                                         recovery_result.net_sol,
                                         recovery_result.total_fees_paid as f64 / 1_000_000_000.0
                                     ));
-                                    println!("✅ {:.9} SOL (fees: {:.9})", recovery_result.net_sol, 
+                                    println!("✓ {:.9} SOL (fees: {:.9})", recovery_result.net_sol, 
                                            recovery_result.total_fees_paid as f64 / 1_000_000_000.0);
                                 }
                                 solana_recover::core::types::RecoveryStatus::Failed => {
-                                    println!("❌ Recovery failed: {}", recovery_result.error.unwrap_or_else(|| "Unknown error".to_string()));
+                                    println!("✗ Reclamation failed: {}", recovery_result.error.unwrap_or_else(|| "Unknown error".to_string()));
                                 }
                                 _ => {
-                                    println!("⚠️  Recovery incomplete: {:?}", recovery_result.status);
+                                    println!("⚠ Recovery incomplete: {:?}", recovery_result.status);
                                 }
                             }
                         }
                         Err(e) => {
-                            println!("❌ Recovery failed: {}", e);
+                            println!("✗ Recovery failed: {}", e);
                         }
                     }
                 } else {
-                    println!("💸 No SOL to reclaim");
+                    println!("No SOL to reclaim");
                 }
             }
             Err(e) => {
-                println!("❌ Scan failed: {}", e);
+                println!("✗ Scan failed: {}", e);
             }
         }
     }
@@ -518,13 +518,13 @@ fn derive_address_from_private_key(private_key: &str) -> Result<String, Box<dyn 
 
 fn print_total_claim_result(result: &TotalClaimResult, dev: bool) {
     println!();
-    println!("💰 Total Claimable SOL Summary:");
+    println!("Total Claimable SOL Summary:");
     println!("  Total wallets: {}", result.total_wallets);
     println!("  Total claimable SOL: {:.9}", result.total_recoverable_sol);
     
     if !result.wallet_results.is_empty() && dev {
         println!();
-        println!("📋 Wallet Breakdown:");
+        println!("Wallet Breakdown:");
         for (address, scan_result) in &result.wallet_results {
             println!("  {}: {:.9} SOL ({} empty accounts)", 
                    address, scan_result.recoverable_sol, scan_result.empty_accounts);
@@ -533,16 +533,16 @@ fn print_total_claim_result(result: &TotalClaimResult, dev: bool) {
     
     if result.total_recoverable_sol > 0.0 {
         println!();
-        println!("💎 Total {:.9} SOL is available for recovery!", result.total_recoverable_sol);
+        println!("Total {:.9} SOL is available for recovery!", result.total_recoverable_sol);
     } else {
         println!();
-        println!("💸 No SOL available for recovery from any wallets.");
+        println!("No SOL available for recovery from any wallets.");
     }
 }
 
 fn print_reclaim_result(result: &ReclaimResult, dev: bool) {
     println!();
-    println!("🔄 SOL Reclamation Summary:");
+    println!("SOL Reclamation Summary:");
     println!("  Total wallets: {}", result.total_wallets);
     println!("  Successful reclaims: {}", result.successful_reclaims);
     println!("  Total SOL recovered: {:.9}", result.total_recovered_sol);
@@ -551,7 +551,7 @@ fn print_reclaim_result(result: &ReclaimResult, dev: bool) {
     
     if !result.reclaim_details.is_empty() && dev {
         println!();
-        println!("📋 Reclaim Breakdown:");
+        println!("Reclaim Breakdown:");
         for (address, recovered, fees) in &result.reclaim_details {
             println!("  {}: {:.9} SOL (fees: {:.9})", address, recovered, fees);
         }
@@ -559,15 +559,15 @@ fn print_reclaim_result(result: &ReclaimResult, dev: bool) {
     
     if result.net_sol > 0.0 {
         println!();
-        println!("💎 Successfully reclaimed {:.9} SOL!", result.net_sol);
+        println!("Successfully reclaimed {:.9} SOL!", result.net_sol);
     } else {
         println!();
-        println!("💸 No SOL was reclaimed.");
+        println!("No SOL was reclaimed.");
     }
 }
 
 fn print_scan_result(result: &WalletInfo, dev: bool) {
-    println!("📋 Scan Results:");
+    println!("Scan Results:");
     if dev {
         println!("  Wallet Address: {}", result.address);
     }
@@ -578,7 +578,7 @@ fn print_scan_result(result: &WalletInfo, dev: bool) {
 
     if result.empty_accounts > 0 && dev {
         println!();
-        println!("💰 Empty Account Details:");
+        println!("Empty Account Details:");
         for (i, account) in result.empty_account_addresses.iter().enumerate() {
             println!("  {}. {}", i + 1, account);
         }
@@ -586,9 +586,9 @@ fn print_scan_result(result: &WalletInfo, dev: bool) {
 
     if result.recoverable_sol > 0.0 {
         println!();
-        println!("💎 This wallet has {:.9} SOL available for recovery!", result.recoverable_sol);
+        println!("This wallet has {:.9} SOL available for recovery!", result.recoverable_sol);
     } else {
         println!();
-        println!("💸 No SOL available for recovery from this wallet.");
+        println!("No SOL available for recovery from this wallet.");
     }
 }

@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         fee_percentage: Some(fee_percentage),
     };
     
-    println!("🚀 Starting batch scan...");
+    println!("Starting batch scan...");
     let start_time = std::time::Instant::now();
     
     // Process batch
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let elapsed = start_time.elapsed();
     
-    println!("✅ Batch scan completed in {}ms", elapsed.as_millis());
+    println!("✓ Batch scan completed in {}ms", elapsed.as_millis());
     println!();
     
     // Display results
@@ -70,13 +70,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total_empty_accounts = 0;
     let mut successful_scans = 0;
     
-    println!("📊 Scan Results Summary:");
+    println!("Scan Results Summary:");
     println!("  Total wallets: {}", results.results.len());
     println!("  Successful scans: {}", results.results.iter().filter(|r| r.result.is_ok()).count());
     println!("  Failed scans: {}", results.results.iter().filter(|r| r.result.is_err()).count());
     println!();
     
-    println!("📋 Detailed Results:");
+    println!("Detailed Results:");
     for (i, scan_result) in results.results.iter().enumerate() {
         match &scan_result.result {
             Ok(result) => {
@@ -84,14 +84,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 total_recoverable += result.recoverable_sol;
                 total_empty_accounts += result.empty_accounts.len();
                 
-                println!("  {}. ✅ {} - {:.9} SOL recoverable ({} empty accounts)", 
+                println!("  {}. ✓ {} - {:.9} SOL recoverable ({} empty accounts)", 
                          i + 1, 
                          scan_result.wallet_address,
                          result.recoverable_sol,
                          result.empty_accounts.len());
             }
             Err(e) => {
-                println!("  {}. ❌ {} - Error: {}", 
+                println!("  {}. ✗ {} - Error: {}", 
                          i + 1, 
                          scan_result.wallet_address,
                          e);
@@ -100,18 +100,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     println!();
-    println!("💰 Total Recoverable SOL: {:.9}", total_recoverable);
-    println!("📁 Total Empty Accounts: {}", total_empty_accounts);
+    println!("Total Recoverable SOL: {:.9}", total_recoverable);
+    println!("Total Empty Accounts: {}", total_empty_accounts);
     
     if successful_scans > 0 {
-        println!("⚡ Average scan time: {:.2}ms", elapsed.as_millis() as f64 / successful_scans as f64);
+        println!("Average scan time: {:.2}ms", elapsed.as_millis() as f64 / successful_scans as f64);
     }
     
     // Export results to JSON if requested
     if env::var("EXPORT_JSON").is_ok() {
         let json_output = serde_json::to_string_pretty(&results)?;
         std::fs::write("batch_scan_results.json", json_output)?;
-        println!("📄 Results exported to batch_scan_results.json");
+        println!("Results exported to batch_scan_results.json");
     }
     
     Ok(())

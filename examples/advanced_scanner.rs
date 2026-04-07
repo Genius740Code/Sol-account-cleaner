@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
     
-    println!("🔧 Advanced Scanner Configuration:");
+    println!("Advanced Scanner Configuration:");
     println!("  Wallet: {}", wallet_address);
     println!("  Max Concurrent: {}", max_concurrent);
     println!("  Timeout: {}s", timeout_seconds);
@@ -42,14 +42,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         enable_cache: true,
     };
     
-    println!("🚀 Initializing scanner with custom configuration...");
+    println!("Initializing scanner with custom configuration...");
     let scanner = WalletScanner::with_config(config).await?;
     
-    println!("✅ Scanner initialized successfully");
+    println!("✓ Scanner initialized successfully");
     println!();
     
     // Perform scan with timeout
-    println!("🔍 Starting wallet scan (with {}s timeout)...", timeout_seconds);
+    println!("Starting wallet scan (with {}s timeout)...", timeout_seconds);
     let start_time = std::time::Instant::now();
     
     let scan_result = timeout(
@@ -61,9 +61,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     match scan_result {
         Ok(Ok(result)) => {
-            println!("✅ Scan completed successfully!");
+            println!("✓ Scan completed successfully!");
             println!();
-            println!("📊 Results:");
+            println!("Results:");
             println!("  Total Accounts: {}", result.total_accounts);
             println!("  Empty Accounts: {}", result.empty_accounts.len());
             println!("  Recoverable SOL: {:.9}", result.recoverable_sol);
@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             if !result.empty_accounts.is_empty() {
                 println!();
-                println!("💰 Empty Accounts Summary:");
+                println!("Empty Accounts Summary:");
                 let total_lamports: u64 = result.empty_accounts.iter()
                     .map(|acc| acc.lamports)
                     .sum();
@@ -86,37 +86,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Ok(Err(e)) => {
-            eprintln!("❌ Scan failed: {}", e);
+            eprintln!("✗ Scan failed: {}", e);
             
             // Provide helpful error messages
             if e.to_string().contains("timeout") {
-                eprintln!("💡 Try increasing the timeout or reducing concurrency");
+                eprintln!("Try increasing timeout or reducing concurrency");
             } else if e.to_string().contains("rate limit") {
-                eprintln!("💡 Try reducing concurrency or using a different RPC endpoint");
+                eprintln!("Try reducing concurrency or using a different RPC endpoint");
             }
         }
         Err(_) => {
-            eprintln!("❌ Scan timed out after {} seconds", timeout_seconds);
-            eprintln!("💡 Try increasing the timeout or reducing concurrency");
+            eprintln!("✗ Scan timed out after {} seconds", timeout_seconds);
+            eprintln!("Try increasing timeout or reducing concurrency");
         }
     }
     
     // Demonstrate scanner reuse
     println!();
-    println!("🔄 Testing scanner reuse with another address...");
+    println!("Testing scanner reuse with another address...");
     let test_address = "11111111111111111111111111111112"; // System Program
     
     match scanner.scan_wallet(test_address).await {
         Ok(result) => {
-            println!("✅ Reuse test successful - {} accounts found", result.total_accounts);
+            println!("✓ Reuse test successful - {} accounts found", result.total_accounts);
         }
         Err(e) => {
-            println!("⚠️  Reuse test failed: {}", e);
+            println!("⚠ Reuse test failed: {}", e);
         }
     }
     
     println!();
-    println!("🎯 Performance Tips:");
+    println!("Performance Tips:");
     println!("  - Increase max_concurrent for faster scans (watch rate limits)");
     println!("  - Use devnet for testing: https://api.devnet.solana.com");
     println!("  - Enable caching for repeated scans of the same wallets");

@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             
                             println!(
-                                "✅ {}: {:.9} SOL recoverable, {:.9} SOL fee{}",
+                                "✓ {}: {:.9} SOL recoverable, {:.9} SOL fee{}",
                                 scan_result.wallet_address,
                                 wallet_info.recoverable_sol,
                                 fee_calc.fee_lamports as f64 / 1_000_000_000.0,
@@ -131,14 +131,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     ScanStatus::Failed => {
                         println!(
-                            "❌ {}: Failed - {}",
+                            "✗ {}: Failed - {}",
                             scan_result.wallet_address,
                             scan_result.error.as_deref().unwrap_or("Unknown error")
                         );
                     }
                     _ => {
                         println!(
-                            "⏳ {}: {:?}",
+                            "Pending {}: {:?}",
                             scan_result.wallet_address,
                             scan_result.status
                         );
