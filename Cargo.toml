@@ -95,3 +95,4 @@ jsonwebtoken       = "9.0"
 lazy_static        = "1.4"
 redis              = { version = "0.25", features = ["tokio-comp"] }
 base64 = "0.22.1"
+urlencoding = "2.1"

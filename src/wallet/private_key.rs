@@ -54,7 +54,7 @@ impl WalletProvider for PrivateKeyProvider {
             let _keypair = self.parse_private_key(private_key)?;
             
             // SECURITY FIX: Store private key securely using SecretKey wrapper
-            let secret_key = SecretKey::new(
+            let _secret_key = SecretKey::new(
                 self.parse_private_key(private_key)?.to_bytes().to_vec()
             );
             
@@ -95,7 +95,7 @@ impl WalletProvider for PrivateKeyProvider {
                 .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to deserialize transaction: {}", e)))?;
             
             // Sign the transaction with the keypair
-            tx.sign(&[keypair], tx.message.recent_blockhash);
+            tx.sign(&[&keypair], tx.message.recent_blockhash);
             
             // Return the full serialized signed transaction, not just the signature
             bincode::serialize(&tx)

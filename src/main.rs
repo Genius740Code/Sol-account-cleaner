@@ -5,6 +5,7 @@ use solana_recover::{scan_wallet, recover_sol, WalletInfo, RecoveryRequest};
 use solana_recover::wallet::{WalletManager, WalletCredentials, WalletType, WalletCredentialData};
 use solana_sdk::signature::{Signer, SeedDerivable};
 use std::io::{self, Write};
+use std::sync::Arc;
 use zeroize::Zeroize;
 
 #[derive(Parser)]

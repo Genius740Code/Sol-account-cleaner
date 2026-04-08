@@ -697,8 +697,8 @@ impl RecoveryManager {
         // Create a mutable copy of the transaction for signing
         let mut tx = transaction.clone();
         
-        // CRITICAL FIX: Use correct signer array format
-        tx.sign(&keypair, tx.message.recent_blockhash);
+        // CRITICAL FIX: Use sign with slice for single signer
+        tx.sign(&[&keypair], tx.message.recent_blockhash);
         
         // Return the full serialized signed transaction
         bincode::serialize(&tx)

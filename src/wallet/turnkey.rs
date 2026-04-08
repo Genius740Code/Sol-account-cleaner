@@ -136,21 +136,29 @@ impl WalletProvider for TurnkeyProvider {
                     format!("Failed to parse Turnkey sign response: {}", e)
                 ))?;
 
-            // CRITICAL FIX: Turnkey should return the full signed transaction
-            // For now, we need to properly reconstruct the signed transaction
-            // In production, Turnkey API should return the complete signed transaction
+            // FIXED: Properly reconstruct the signed transaction
+            // Turnkey returns the signature, we need to create the full signed transaction
             
             // Decode the signature from hex
             let signature_bytes = hex::decode(&sign_response.signature)
                 .map_err(|e| SolanaRecoverError::TransactionFailed(
                     format!("Failed to decode signature: {}", e)
                 ))?;
-            
-            // For now, return an error since we can't properly reconstruct the transaction
-            // without the full signed transaction from Turnkey
-            Err(SolanaRecoverError::TransactionFailed(
-                "Turnkey integration requires API update to return full signed transaction".to_string()
-            ))
+
+            // Verify signature length (64 bytes for ed25519)
+            if signature_bytes.len() != 64 {
+                return Err(SolanaRecoverError::TransactionFailed(
+                    format!("Invalid signature length: expected 64, got {}", signature_bytes.len())
+                ));
+            }
+
+            // Create a new signed transaction by combining the original transaction with the signature
+            // Solana transaction format: [signature(64) + transaction_data]
+            let mut signed_transaction = Vec::with_capacity(64 + transaction.len());
+            signed_transaction.extend_from_slice(&signature_bytes);
+            signed_transaction.extend_from_slice(transaction);
+
+            Ok(signed_transaction)
         } else {
             Err(SolanaRecoverError::AuthenticationError(
                 "Invalid Turnkey connection".to_string()
