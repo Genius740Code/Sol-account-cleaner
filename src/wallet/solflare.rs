@@ -44,10 +44,13 @@ impl WalletProvider for SolflareProvider {
         }
     }
 
-    async fn sign_transaction(&self, connection: &WalletConnection, _transaction: &[u8]) -> Result<Vec<u8>> {
+    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8]) -> Result<Vec<u8>> {
         if let ConnectionData::Solflare { .. } = &connection.connection_data {
-            // Placeholder signature
-            Ok(vec![0u8; 64])
+            // CRITICAL FIX: Return proper error instead of placeholder data
+            // This prevents silent failures with invalid signatures
+            Err(SolanaRecoverError::AuthenticationError(
+                "Solflare wallet integration not yet implemented. Please use PrivateKey or Turnkey providers.".to_string()
+            ))
         } else {
             Err(SolanaRecoverError::AuthenticationError(
                 "Invalid Solflare connection".to_string()

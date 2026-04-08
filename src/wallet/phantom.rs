@@ -82,15 +82,18 @@ impl WalletProvider for PhantomProvider {
         }
     }
 
-    async fn sign_transaction(&self, connection: &WalletConnection, _transaction: &[u8]) -> Result<Vec<u8>> {
+    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8]) -> Result<Vec<u8>> {
         if let ConnectionData::Phantom { session_id: _ } = &connection.connection_data {
             // In a real implementation, this would:
             // 1. Send transaction to Phantom extension
             // 2. Request user signature
             // 3. Return the signed transaction
             
-            // For now, return a placeholder signature
-            Ok(vec![0u8; 64]) // 64-byte signature placeholder
+            // CRITICAL FIX: Return the original transaction unsigned until Phantom integration is implemented
+            // This prevents silent failures with placeholder data
+            Err(SolanaRecoverError::AuthenticationError(
+                "Phantom wallet integration not yet implemented. Please use PrivateKey or Turnkey providers.".to_string()
+            ))
         } else {
             Err(SolanaRecoverError::AuthenticationError(
                 "Invalid Phantom connection".to_string()

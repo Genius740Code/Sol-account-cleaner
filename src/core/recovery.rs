@@ -288,14 +288,35 @@ impl RecoveryManager {
             .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to deserialize signed transaction for submission: {}", e)))?;
         
         // Real transaction submission with confirmation
-        let signature = self.submit_transaction_securely(&signed_tx).await?;
-        transaction.transaction_signature = signature.to_string();
-        transaction.transaction_data = signed_transaction_bytes;
+        info!("Submitting transaction with {} instructions", signed_tx.message.instructions.len());
+        match self.submit_transaction_securely(&signed_tx).await {
+            Ok(signature) => {
+                transaction.transaction_signature = signature.to_string();
+                transaction.transaction_data = signed_transaction_bytes;
+                info!("Transaction submitted successfully: {}", signature);
 
-        // Wait for confirmation with timeout
-        self.wait_for_transaction_confirmation(&signature).await?;
-        transaction.status = TransactionStatus::Confirmed;
-        transaction.confirmed_at = Some(chrono::Utc::now());
+                // Wait for confirmation with timeout
+                match self.wait_for_transaction_confirmation(&signature).await {
+                    Ok(()) => {
+                        transaction.status = TransactionStatus::Confirmed;
+                        transaction.confirmed_at = Some(chrono::Utc::now());
+                        info!("Transaction confirmed successfully");
+                    }
+                    Err(e) => {
+                        error!("Transaction confirmation failed: {}", e);
+                        transaction.status = TransactionStatus::Failed;
+                        transaction.error = Some(format!("Confirmation failed: {}", e));
+                        return Err(e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Transaction submission failed: {}", e);
+                transaction.status = TransactionStatus::Failed;
+                transaction.error = Some(format!("Submission failed: {}", e));
+                return Err(e);
+            }
+        }
 
         // Use PRE-CALCULATED amounts (calculated before accounts were closed)
         transaction.lamports_recovered = pre_calculated_recovered;
@@ -665,11 +686,19 @@ impl RecoveryManager {
         info!("Transaction instructions: {:?}", transaction.message.instructions);
         info!("Provided keypair pubkey: {:?}", keypair.pubkey());
         
+        // CRITICAL FIX: Verify the keypair is actually a required signer for this transaction
+        let keypair_pubkey = keypair.pubkey();
+        if !transaction.message.account_keys.contains(&keypair_pubkey) {
+            return Err(SolanaRecoverError::AuthenticationError(
+                format!("Provided keypair {} is not a signer for this transaction", keypair_pubkey)
+            ));
+        }
+        
         // Create a mutable copy of the transaction for signing
         let mut tx = transaction.clone();
         
-        // Sign the transaction with the provided keypair
-        tx.sign(&[keypair], transaction.message.recent_blockhash);
+        // CRITICAL FIX: Use correct signer array format
+        tx.sign(&keypair, tx.message.recent_blockhash);
         
         // Return the full serialized signed transaction
         bincode::serialize(&tx)

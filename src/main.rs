@@ -168,6 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Err(e) => {
                     println!("✗ Reclamation failed: {}", e);
+                    eprintln!("Detailed error: {:?}", e);
                 }
             }
         } else {
@@ -435,17 +436,37 @@ async fn reclaim_sol_from_targets(
                         empty_accounts: empty_account_addresses,
                         max_fee_lamports: Some(10_000_000), // 0.01 SOL max fee
                         priority_fee_lamports: None,
-                        wallet_connection_id: if is_private_keys {
-                            Some(format!("private_key:{}", wallet))
-                        } else {
-                            None // Would need wallet connection for address-based
-                        },
+                        wallet_connection_id: None, // Will be set properly when wallet connection is established
                         user_id: None,
                         created_at: chrono::Utc::now(),
                     };
                     
+                    // Create wallet manager and establish connection for private keys
+                    let wallet_manager = if is_private_keys {
+                        Some(Arc::new(WalletManager::new()))
+                    } else {
+                        None
+                    };
+                    
+                    let connection_id = if is_private_keys {
+                        let credentials = WalletCredentials {
+                            wallet_type: WalletType::PrivateKey,
+                            credentials: WalletCredentialData::PrivateKey {
+                                private_key: wallet.clone(),
+                            },
+                        };
+                        let connection = wallet_manager.as_ref().unwrap().connect_wallet(credentials).await?;
+                        Some(connection.id)
+                    } else {
+                        None
+                    };
+                    
+                    // Update recovery request with proper connection ID
+                    let mut recovery_request = recovery_request;
+                    recovery_request.wallet_connection_id = connection_id;
+                    
                     // Perform recovery
-                    match recover_sol(&recovery_request, rpc_endpoint, None).await {
+                    match recover_sol(&recovery_request, rpc_endpoint, wallet_manager).await {
                         Ok(recovery_result) => {
                             // Check the actual recovery status, not just Ok()
                             match recovery_result.status {
@@ -471,6 +492,7 @@ async fn reclaim_sol_from_targets(
                         }
                         Err(e) => {
                             println!("✗ Recovery failed: {}", e);
+                            eprintln!("Detailed error: {:?}", e);
                         }
                     }
                 } else {

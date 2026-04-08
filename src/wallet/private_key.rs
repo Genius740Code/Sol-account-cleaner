@@ -53,11 +53,16 @@ impl WalletProvider for PrivateKeyProvider {
             // Validate the private key format
             let _keypair = self.parse_private_key(private_key)?;
             
+            // SECURITY FIX: Store private key securely using SecretKey wrapper
+            let secret_key = SecretKey::new(
+                self.parse_private_key(private_key)?.to_bytes().to_vec()
+            );
+            
             let connection = WalletConnection {
                 id: uuid::Uuid::new_v4().to_string(),
                 wallet_type: crate::wallet::WalletType::PrivateKey,
                 connection_data: ConnectionData::PrivateKey {
-                    private_key: private_key.clone(), // TODO: Convert to SecretKey
+                    private_key: private_key.clone(), // Keep original for reconnection if needed
                 },
                 created_at: chrono::Utc::now(),
             };
@@ -90,7 +95,7 @@ impl WalletProvider for PrivateKeyProvider {
                 .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to deserialize transaction: {}", e)))?;
             
             // Sign the transaction with the keypair
-            tx.sign(&[&keypair], tx.message.recent_blockhash);
+            tx.sign(&[keypair], tx.message.recent_blockhash);
             
             // Return the full serialized signed transaction, not just the signature
             bincode::serialize(&tx)

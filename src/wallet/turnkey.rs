@@ -136,10 +136,21 @@ impl WalletProvider for TurnkeyProvider {
                     format!("Failed to parse Turnkey sign response: {}", e)
                 ))?;
 
-            hex::decode(&sign_response.signature)
+            // CRITICAL FIX: Turnkey should return the full signed transaction
+            // For now, we need to properly reconstruct the signed transaction
+            // In production, Turnkey API should return the complete signed transaction
+            
+            // Decode the signature from hex
+            let signature_bytes = hex::decode(&sign_response.signature)
                 .map_err(|e| SolanaRecoverError::TransactionFailed(
                     format!("Failed to decode signature: {}", e)
-                ))
+                ))?;
+            
+            // For now, return an error since we can't properly reconstruct the transaction
+            // without the full signed transaction from Turnkey
+            Err(SolanaRecoverError::TransactionFailed(
+                "Turnkey integration requires API update to return full signed transaction".to_string()
+            ))
         } else {
             Err(SolanaRecoverError::AuthenticationError(
                 "Invalid Turnkey connection".to_string()
