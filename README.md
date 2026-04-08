@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-solana-recover = "1.0.0"
+solana-recover = "1.0.2"
 ```
 
 ### Feature Flags
@@ -30,16 +30,16 @@ Use only the features you need to keep your binary small:
 
 ```toml
 # Default: scanner + client
-solana-recover = "1.0.0"
+solana-recover = "1.0.2"
 
 # Minimal - just core types
-solana-recover = { version = "1.0.0", default-features = false }
+solana-recover = { version = "1.0.2", default-features = false }
 
 # Scanner functionality only
-solana-recover = { version = "1.0.0", default-features = false, features = ["scanner"] }
+solana-recover = { version = "1.0.2", default-features = false, features = ["scanner"] }
 
 # Full feature set
-solana-recover = { version = "1.0.0", features = ["full"] }
+solana-recover = { version = "1.0.2", features = ["full"] }
 ```
 
 Available features:
