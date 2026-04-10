@@ -43,6 +43,7 @@ struct TurnkeySignResponse {
     signature: String,
 }
 
+/*
 #[async_trait]
 impl WalletProvider for TurnkeyProvider {
     async fn connect(&self, credentials: &WalletCredentials) -> Result<WalletConnection> {
@@ -184,6 +185,7 @@ impl WalletProvider for TurnkeyProvider {
         }
     }
 }
+*/
 
 impl Default for TurnkeyProvider {
     fn default() -> Self {

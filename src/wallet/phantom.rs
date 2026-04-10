@@ -173,6 +173,7 @@ struct PhantomSignResponse {
     signature: String,
 }
 
+/*
 #[async_trait]
 impl WalletProvider for PhantomProvider {
     async fn connect(&self, credentials: &WalletCredentials) -> Result<WalletConnection> {
@@ -311,6 +312,7 @@ impl WalletProvider for PhantomProvider {
         }
     }
 }
+*/
 
 impl Default for PhantomProvider {
     fn default() -> Self {

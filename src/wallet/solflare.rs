@@ -218,6 +218,7 @@ impl SolflareProvider {
     }
 }
 
+/*
 #[async_trait]
 impl WalletProvider for SolflareProvider {
     async fn connect(&self, credentials: &WalletCredentials) -> Result<WalletConnection> {
@@ -358,6 +359,7 @@ impl WalletProvider for SolflareProvider {
         }
     }
 }
+*/
 
 impl Default for SolflareProvider {
     fn default() -> Self {

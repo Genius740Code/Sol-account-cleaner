@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wallet Test</title>
+    <style>
+        body { font-family: Arial; background: white; padding: 20px; }
+        .container { max-width: 400px; margin: 0 auto; }
+        button { 
+            background: #333; 
+            color: white; 
+            border: none; 
+            padding: 15px 20px; 
+            margin: 10px 0; 
+            width: 100%; 
+            cursor: pointer; 
+            border-radius: 5px;
+        }
+        button:hover { background: #555; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            font-family: monospace; 
+            font-size: 12px;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .wallet-info { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            border: 1px solid #dee2e6;
+        }
+        .wallet-info div { margin: 5px 0; font-family: monospace; font-size: 12px; }
+        .log { 
+            background: #000; 
+            color: #00ff00; 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            height: 200px; 
+            overflow-y: auto; 
+            font-family: monospace; 
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Wallet Connection Test</h1>
+        <p>Connect Phantom or Solflare wallet</p>
+        
+        <div id="status" class="status"></div>
+        
+        <button id="phantom-btn" onclick="connectWallet('phantom')">Connect Phantom</button>
+        <button id="solflare-btn" onclick="connectWallet('solflare')">Connect Solflare</button>
+        <button id="disconnect-btn" onclick="disconnectWallet()" style="display:none;">Disconnect</button>
+        
+        <div id="wallet-info" class="wallet-info" style="display:none;">
+            <div><strong>Wallet:</strong> <span id="wallet-type"></span></div>
+            <div><strong>Address:</strong> <span id="wallet-address"></span></div>
+            <div><strong>Balance:</strong> <span id="wallet-balance"></span></div>
+        </div>
+        
+        <div class="log" id="log">=== Wallet Test Log ===</div>
+    </div>
+
+    <script>
+        let currentWallet = null;
+        let currentProvider = null;
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `\n[${timestamp}] ${message}`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            log(`STATUS: ${message} (${type})`);
+        }
+
+        function checkWallets() {
+            log('Checking wallet availability...');
+            
+            const phantomAvailable = window.phantom?.solana?.isPhantom;
+            const solflareAvailable = window.solflare?.isSolflare;
+            
+            log(`Phantom available: ${phantomAvailable}`);
+            log(`Solflare available: ${solflareAvailable}`);
+            
+            if (!phantomAvailable) {
+                document.getElementById('phantom-btn').disabled = true;
+                document.getElementById('phantom-btn').textContent += ' (Not installed)';
+            }
+            
+            if (!solflareAvailable) {
+                document.getElementById('solflare-btn').disabled = true;
+                document.getElementById('solflare-btn').textContent += ' (Not installed)';
+            }
+            
+            if (!phantomAvailable && !solflareAvailable) {
+                showStatus('No wallet detected. Install Phantom or Solflare.', 'error');
+            } else {
+                showStatus('Wallet detected! Click to connect.', 'info');
+            }
+        }
+
+        async function connectWallet(walletType) {
+            log(`Attempting to connect ${walletType} wallet...`);
+            
+            const btn = document.getElementById(`${walletType}-btn`);
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+            
+            try {
+                let provider;
+                
+                if (walletType === 'phantom') {
+                    if (!window.phantom?.solana?.isPhantom) {
+                        throw new Error('Phantom wallet not installed');
+                    }
+                    provider = window.phantom.solana;
+                    log('Phantom provider found');
+                } else if (walletType === 'solflare') {
+                    if (!window.solflare?.isSolflare) {
+                        throw new Error('Solflare wallet not installed');
+                    }
+                    provider = window.solflare;
+                    log('Solflare provider found');
+                }
+                
+                log('Calling provider.connect()...');
+                const response = await provider.connect();
+                log(`Connect response: ${JSON.stringify(response)}`);
+                
+                if (response.publicKey) {
+                    const address = response.publicKey.toString();
+                    log(`Connected! Address: ${address}`);
+                    
+                    currentWallet = walletType;
+                    currentProvider = provider;
+                    
+                    // Update UI
+                    document.getElementById('wallet-type').textContent = walletType;
+                    document.getElementById('wallet-address').textContent = address;
+                    document.getElementById('wallet-info').style.display = 'block';
+                    document.getElementById('disconnect-btn').style.display = 'block';
+                    
+                    // Hide other connect buttons
+                    if (walletType === 'phantom') {
+                        document.getElementById('solflare-btn').style.display = 'none';
+                    } else {
+                        document.getElementById('phantom-btn').style.display = 'none';
+                    }
+                    
+                    showStatus(`Connected to ${walletType}!`, 'success');
+                    
+                    // Get balance
+                    await getBalance(address);
+                    
+                } else {
+                    throw new Error('No public key in response');
+                }
+                
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+                log(`ERROR STACK: ${error.stack}`);
+                showStatus(`Connection failed: ${error.message}`, 'error');
+                
+                btn.disabled = false;
+                btn.textContent = `Connect ${walletType.charAt(0).toUpperCase() + walletType.slice(1)}`;
+            }
+        }
+
+        async function getBalance(address) {
+            log(`Getting balance for address: ${address}`);
+            
+            try {
+                // Ensure Solana Web3.js is loaded
+                await ensureSolanaWeb3Loaded();
+                
+                // Create connection with comprehensive fallback methods
+                const connection = createSolanaConnection();
+                
+                if (!connection) {
+                    throw new Error('Failed to create Solana connection after all fallback methods');
+                }
+                
+                log('Connection created successfully, getting balance...');
+                log(`Connection endpoint: ${connection.rpcEndpoint || 'custom'}`);
+                
+                // Create PublicKey object with fallback
+                const publicKey = createPublicKey(address);
+                if (!publicKey) {
+                    throw new Error('Failed to create PublicKey object');
+                }
+                
+                log(`PublicKey created: ${publicKey.toString()}`);
+                
+                // Get balance with timeout
+                const balance = await Promise.race([
+                    connection.getBalance(publicKey),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Balance query timeout')), 10000)
+                    )
+                ]);
+                
+                const balanceInSol = balance / 1e9;
+                
+                log(`Balance fetched successfully: ${balance} lamports (${balanceInSol} SOL)`);
+                document.getElementById('wallet-balance').textContent = `${balanceInSol.toFixed(4)} SOL`;
+                
+            } catch (error) {
+                log(`BALANCE ERROR: ${error.message}`);
+                log(`BALANCE ERROR TYPE: ${error.constructor.name}`);
+                log(`BALANCE ERROR STACK: ${error.stack}`);
+                log(`Available globals: ${JSON.stringify(Object.keys(window).filter(k => k.includes('solana')))}`);
+                document.getElementById('wallet-balance').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        let solanaWeb3LoadPromise = null;
+        let solanaWeb3Loaded = false;
+        
+        async function ensureSolanaWeb3Loaded() {
+            if (solanaWeb3Loaded) {
+                log('Solana Web3.js already loaded');
+                return;
+            }
+            
+            if (solanaWeb3LoadPromise) {
+                log('Waiting for existing Solana Web3.js load...');
+                return solanaWeb3LoadPromise;
+            }
+            
+            solanaWeb3LoadPromise = loadSolanaWeb3();
+            return solanaWeb3LoadPromise;
+        }
+        
+        async function loadSolanaWeb3() {
+            return new Promise((resolve, reject) => {
+                log('Loading Solana Web3.js from CDN...');
+                
+                // Check if already loaded in different forms
+                if (window.Solana || window.solanaWeb3 || window.solana) {
+                    log('Solana Web3.js already available in window');
+                    solanaWeb3Loaded = true;
+                    resolve();
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js';
+                script.crossOrigin = 'anonymous';
+                
+                const timeout = setTimeout(() => {
+                    log('Solana Web3.js loading timeout (10s)');
+                    script.remove();
+                    reject(new Error('Solana Web3.js loading timeout'));
+                }, 10000);
+                
+                script.onload = () => {
+                    clearTimeout(timeout);
+                    
+                    // Verify the library loaded properly
+                    setTimeout(() => {
+                        if (window.Solana || window.solanaWeb3 || window.solana) {
+                            log('Solana Web3.js loaded and verified successfully');
+                            log(`Available globals: ${Object.keys(window).filter(k => k.includes('solana')).join(', ')}`);
+                            solanaWeb3Loaded = true;
+                            resolve();
+                        } else {
+                            log('Solana Web3.js script loaded but globals not found');
+                            reject(new Error('Solana Web3.js loaded but globals not available'));
+                        }
+                    }, 100);
+                };
+                
+                script.onerror = (error) => {
+                    clearTimeout(timeout);
+                    log(`Failed to load Solana Web3.js: ${error}`);
+                    log('Trying fallback CDN...');
+                    
+                    // Try fallback CDN
+                    loadFallbackCDN().then(resolve).catch(reject);
+                };
+                
+                document.head.appendChild(script);
+            });
+        }
+        
+        async function loadFallbackCDN() {
+            return new Promise((resolve, reject) => {
+                log('Loading Solana Web3.js from jsdelivr CDN...');
+                
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.min.js';
+                script.crossOrigin = 'anonymous';
+                
+                const timeout = setTimeout(() => {
+                    clearTimeout(timeout);
+                    script.remove();
+                    reject(new Error('Fallback CDN loading timeout'));
+                }, 8000);
+                
+                script.onload = () => {
+                    clearTimeout(timeout);
+                    
+                    setTimeout(() => {
+                        if (window.Solana || window.solanaWeb3 || window.solana) {
+                            log('Fallback CDN loaded successfully');
+                            solanaWeb3Loaded = true;
+                            resolve();
+                        } else {
+                            reject(new Error('Fallback CDN loaded but globals not available'));
+                        }
+                    }, 100);
+                };
+                
+                script.onerror = () => {
+                    clearTimeout(timeout);
+                    reject(new Error('Both primary and fallback CDNs failed'));
+                };
+                
+                document.head.appendChild(script);
+            });
+        }
+        
+        function createSolanaConnection() {
+            const rpcUrl = 'https://api.mainnet-beta.solana.com';
+            let connection = null;
+            let methodUsed = '';
+            
+            // Method 1: Try window.Solana (newer versions)
+            if (window.Solana && window.Solana.Connection) {
+                try {
+                    connection = new window.Solana.Connection(rpcUrl);
+                    methodUsed = 'window.Solana.Connection';
+                    log(`Method 1 success: ${methodUsed}`);
+                } catch (e) {
+                    log(`Method 1 failed: ${e.message}`);
+                }
+            }
+            
+            // Method 2: Try window.solanaWeb3 (common pattern)
+            if (!connection && window.solanaWeb3) {
+                const ConnectionClass = window.solanaWeb3.Connection || 
+                                     window.solanaWeb3.default?.Connection ||
+                                     window.solanaWeb3.default;
+                
+                if (ConnectionClass) {
+                    try {
+                        connection = new ConnectionClass(rpcUrl);
+                        methodUsed = 'window.solanaWeb3.Connection';
+                        log(`Method 2 success: ${methodUsed}`);
+                    } catch (e) {
+                        log(`Method 2 failed: ${e.message}`);
+                    }
+                }
+            }
+            
+            // Method 3: Try window.solana (alternative pattern)
+            if (!connection && window.solana && window.solana.Connection) {
+                try {
+                    connection = new window.solana.Connection(rpcUrl);
+                    methodUsed = 'window.solana.Connection';
+                    log(`Method 3 success: ${methodUsed}`);
+                } catch (e) {
+                    log(`Method 3 failed: ${e.message}`);
+                }
+            }
+            
+            // Method 4: Try provider's connection
+            if (!connection && currentProvider && currentProvider.connection) {
+                connection = currentProvider.connection;
+                methodUsed = 'provider.connection';
+                log(`Method 4 success: ${methodUsed}`);
+            }
+            
+            // Method 5: Try to access via global exports
+            if (!connection) {
+                try {
+                    const globalObj = window.global || window;
+                    const solanaLib = globalObj.solanaWeb3 || globalObj.Solana || globalObj.solana;
+                    if (solanaLib && solanaLib.Connection) {
+                        connection = new solanaLib.Connection(rpcUrl);
+                        methodUsed = 'global exports';
+                        log(`Method 5 success: ${methodUsed}`);
+                    }
+                } catch (e) {
+                    log(`Method 5 failed: ${e.message}`);
+                }
+            }
+            
+            if (connection) {
+                log(`Connection created using: ${methodUsed}`);
+                return connection;
+            } else {
+                log('All connection methods failed');
+                log(`Available window keys: ${Object.keys(window).filter(k => k.toLowerCase().includes('solana')).join(', ')}`);
+                return null;
+            }
+        }
+        
+        function createPublicKey(address) {
+            let publicKey = null;
+            let methodUsed = '';
+            
+            // Method 1: Try window.Solana.PublicKey
+            if (window.Solana && window.Solana.PublicKey) {
+                try {
+                    publicKey = new window.Solana.PublicKey(address);
+                    methodUsed = 'window.Solana.PublicKey';
+                } catch (e) {
+                    log(`PublicKey method 1 failed: ${e.message}`);
+                }
+            }
+            
+            // Method 2: Try window.solanaWeb3.PublicKey
+            if (!publicKey && window.solanaWeb3) {
+                const PublicKeyClass = window.solanaWeb3.PublicKey || 
+                                    window.solanaWeb3.default?.PublicKey;
+                
+                if (PublicKeyClass) {
+                    try {
+                        publicKey = new PublicKeyClass(address);
+                        methodUsed = 'window.solanaWeb3.PublicKey';
+                    } catch (e) {
+                        log(`PublicKey method 2 failed: ${e.message}`);
+                    }
+                }
+            }
+            
+            // Method 3: Try window.solana.PublicKey
+            if (!publicKey && window.solana && window.solana.PublicKey) {
+                try {
+                    publicKey = new window.solana.PublicKey(address);
+                    methodUsed = 'window.solana.PublicKey';
+                } catch (e) {
+                    log(`PublicKey method 3 failed: ${e.message}`);
+                }
+            }
+            
+            if (publicKey) {
+                log(`PublicKey created using: ${methodUsed}`);
+                return publicKey;
+            } else {
+                log('All PublicKey methods failed');
+                return null;
+            }
+        }
+
+        function disconnectWallet() {
+            log('Disconnecting wallet...');
+            
+            if (currentProvider && currentProvider.disconnect) {
+                currentProvider.disconnect();
+            }
+            
+            currentWallet = null;
+            currentProvider = null;
+            
+            // Reset UI
+            document.getElementById('wallet-info').style.display = 'none';
+            document.getElementById('disconnect-btn').style.display = 'none';
+            document.getElementById('phantom-btn').style.display = 'block';
+            document.getElementById('solflare-btn').style.display = 'block';
+            
+            document.getElementById('phantom-btn').disabled = false;
+            document.getElementById('phantom-btn').textContent = 'Connect Phantom';
+            document.getElementById('solflare-btn').disabled = false;
+            document.getElementById('solflare-btn').textContent = 'Connect Solflare';
+            
+            showStatus('Wallet disconnected', 'info');
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            log('Page loaded, checking wallets...');
+            checkWallets();
+        });
+
+        // Listen for account changes
+        if (window.phantom?.solana) {
+            window.phantom.solana.on('accountChanged', (publicKey) => {
+                log(`Phantom account changed: ${publicKey ? publicKey.toString() : 'disconnected'}`);
+                if (publicKey) {
+                    document.getElementById('wallet-address').textContent = publicKey.toString();
+                    getBalance(publicKey.toString());
+                } else {
+                    disconnectWallet();
+                }
+            });
+        }
+
+        if (window.solflare) {
+            window.solflare.on('accountChanged', (publicKey) => {
+                log(`Solflare account changed: ${publicKey ? publicKey.toString() : 'disconnected'}`);
+                if (publicKey) {
+                    document.getElementById('wallet-address').textContent = publicKey.toString();
+                    getBalance(publicKey.toString());
+                } else {
+                    disconnectWallet();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
