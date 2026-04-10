@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum SolanaRecoverError {
     #[error("RPC client error: {0}")]
-    RpcClientError(#[from] solana_client::client_error::ClientError),
+    RpcClientError(String),
     
     #[error("Invalid wallet address: {0}")]
     InvalidWalletAddress(String),
@@ -27,7 +27,7 @@ pub enum SolanaRecoverError {
     SerializationError(String),
     
     #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    IoError(String),
     
     #[error("Timeout error: {0}")]
     TimeoutError(String),
@@ -66,10 +66,58 @@ pub enum SolanaRecoverError {
     DatabaseError(String),
     
     #[error("Rusqlite error: {0}")]
-    RusqliteError(#[from] rusqlite::Error),
+    RusqliteError(String),
     
     #[error("Transaction error: {0}")]
     TransactionError(String),
+}
+
+impl Clone for SolanaRecoverError {
+    fn clone(&self) -> Self {
+        match self {
+            SolanaRecoverError::RpcClientError(msg) => SolanaRecoverError::RpcClientError(msg.clone()),
+            SolanaRecoverError::InvalidWalletAddress(msg) => SolanaRecoverError::InvalidWalletAddress(msg.clone()),
+            SolanaRecoverError::RateLimitExceeded(msg) => SolanaRecoverError::RateLimitExceeded(msg.clone()),
+            SolanaRecoverError::ConnectionPoolExhausted => SolanaRecoverError::ConnectionPoolExhausted,
+            SolanaRecoverError::ConfigError(msg) => SolanaRecoverError::ConfigError(msg.clone()),
+            SolanaRecoverError::ConfigurationError(msg) => SolanaRecoverError::ConfigurationError(msg.clone()),
+            SolanaRecoverError::StorageError(msg) => SolanaRecoverError::StorageError(msg.clone()),
+            SolanaRecoverError::SerializationError(msg) => SolanaRecoverError::SerializationError(msg.clone()),
+            SolanaRecoverError::IoError(msg) => SolanaRecoverError::IoError(msg.clone()),
+            SolanaRecoverError::TimeoutError(msg) => SolanaRecoverError::TimeoutError(msg.clone()),
+            SolanaRecoverError::NetworkError(msg) => SolanaRecoverError::NetworkError(msg.clone()),
+            SolanaRecoverError::AuthenticationError(msg) => SolanaRecoverError::AuthenticationError(msg.clone()),
+            SolanaRecoverError::InvalidFeeStructure(msg) => SolanaRecoverError::InvalidFeeStructure(msg.clone()),
+            SolanaRecoverError::ValidationError(msg) => SolanaRecoverError::ValidationError(msg.clone()),
+            SolanaRecoverError::WalletNotFound(msg) => SolanaRecoverError::WalletNotFound(msg.clone()),
+            SolanaRecoverError::InsufficientBalance { required, available } => SolanaRecoverError::InsufficientBalance { required: *required, available: *available },
+            SolanaRecoverError::TransactionFailed(msg) => SolanaRecoverError::TransactionFailed(msg.clone()),
+            SolanaRecoverError::InternalError(msg) => SolanaRecoverError::InternalError(msg.clone()),
+            SolanaRecoverError::InvalidInput(msg) => SolanaRecoverError::InvalidInput(msg.clone()),
+            SolanaRecoverError::NoRecoverableFunds(msg) => SolanaRecoverError::NoRecoverableFunds(msg.clone()),
+            SolanaRecoverError::DatabaseError(msg) => SolanaRecoverError::DatabaseError(msg.clone()),
+            SolanaRecoverError::RusqliteError(msg) => SolanaRecoverError::RusqliteError(msg.clone()),
+            SolanaRecoverError::TransactionError(msg) => SolanaRecoverError::TransactionError(msg.clone()),
+        }
+    }
+}
+
+impl From<solana_client::client_error::ClientError> for SolanaRecoverError {
+    fn from(err: solana_client::client_error::ClientError) -> Self {
+        SolanaRecoverError::RpcClientError(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for SolanaRecoverError {
+    fn from(err: std::io::Error) -> Self {
+        SolanaRecoverError::IoError(err.to_string())
+    }
+}
+
+impl From<rusqlite::Error> for SolanaRecoverError {
+    fn from(err: rusqlite::Error) -> Self {
+        SolanaRecoverError::RusqliteError(err.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, SolanaRecoverError>;

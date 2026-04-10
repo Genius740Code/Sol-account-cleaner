@@ -243,7 +243,7 @@ impl TransactionValidator {
                     inner_instructions: Some(false).is_some(),
                 },
             )
-            .map_err(|e| SolanaRecoverError::RpcClientError(e))?;
+            .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
 
         let mut account_changes = Vec::new();
         

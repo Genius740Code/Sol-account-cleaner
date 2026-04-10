@@ -120,9 +120,9 @@ impl WalletManager {
         let nonce_manager = Arc::new(NonceManager::default());
         let audit_logger = Arc::new(AuditLogger::default());
         
-        // Initialize Turnkey provider (temporarily disabled for testing)
+        // Initialize Turnkey provider
         if config.enable_turnkey {
-            // providers.insert(WalletType::Turnkey, Box::new(crate::wallet::turnkey::TurnkeyProvider::new()));
+            providers.insert(WalletType::Turnkey, Box::new(crate::wallet::turnkey::TurnkeyProvider::new()));
         }
         
         // Initialize Phantom provider (temporarily disabled for testing)

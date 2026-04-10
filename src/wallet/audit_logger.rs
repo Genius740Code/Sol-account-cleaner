@@ -404,14 +404,14 @@ impl AuditLogger {
             .create(true)
             .append(true)
             .open(log_path)
-            .map_err(|e| SolanaRecoverError::IoError(e))?;
+            .map_err(|e| SolanaRecoverError::IoError(e.to_string()))?;
 
         for event in events {
             let line = serde_json::to_string(event)
                 .map_err(|e| SolanaRecoverError::SerializationError(e.to_string()))?;
             
             writeln!(file, "{}", line)
-                .map_err(|e| SolanaRecoverError::IoError(e))?;
+                .map_err(|e| SolanaRecoverError::IoError(e.to_string()))?;
         }
 
         Ok(())

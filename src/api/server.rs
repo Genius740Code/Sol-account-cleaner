@@ -112,7 +112,7 @@ async fn handle_connection(
 ) -> Result<()> {
     let mut buffer = [0; 1024];
     let n = stream.read(&mut buffer).await
-        .map_err(|e| crate::SolanaRecoverError::IoError(e))?;
+        .map_err(|e| crate::SolanaRecoverError::IoError(e.to_string()))?;
     
     let request = String::from_utf8_lossy(&buffer[..n]);
     
@@ -135,7 +135,7 @@ async fn handle_connection(
     };
 
     stream.write_all(response.as_bytes()).await
-        .map_err(|e| crate::SolanaRecoverError::IoError(e))?;
+        .map_err(|e| crate::SolanaRecoverError::IoError(e.to_string()))?;
 
     Ok(())
 }

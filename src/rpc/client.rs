@@ -116,7 +116,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("OpenBook V2 request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         // Fetch Serum DEX accounts (legacy)
         let serum_dex_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
@@ -145,7 +145,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Serum DEX request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         // Convert program accounts to RpcKeyedAccount format
         let mut all_openbook_accounts = Vec::new();
@@ -215,7 +215,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         // Fetch Token-2022 accounts
         let token_2022_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
@@ -229,7 +229,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         // Combine results from both programs
         let mut all_accounts = standard_accounts;
@@ -250,7 +250,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
         .value)
     }
     
@@ -279,7 +279,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
         .value
         .ok_or_else(|| SolanaRecoverError::InternalError("Account not found".to_string()))
         .map(|account| {
@@ -310,7 +310,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
         .value
         .into_iter()
         .map(|account_opt| account_opt.map(|account| {
@@ -341,7 +341,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Transaction timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(format!("Task join error: {}", e)))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e))?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         Ok(result.to_string())
     }
@@ -363,7 +363,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         Ok(result.map(|status| status.is_ok()))
     }
@@ -385,7 +385,7 @@ impl RpcClientWrapper {
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(SolanaRecoverError::RpcClientError)?;
+        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
         
         // Cache the result
         cache.insert(data_size, result).await;
