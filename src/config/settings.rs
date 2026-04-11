@@ -60,6 +60,8 @@ impl From<crate::config::ScannerConfig> for crate::core::processor::ProcessorCon
             max_concurrent_wallets: config.max_concurrent_wallets,
             retry_attempts: config.retry_attempts,
             retry_delay_ms: config.retry_delay_ms,
+            enable_intelligent_processing: true,
+            num_workers: None,
         }
     }
 }

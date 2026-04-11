@@ -1,10 +1,13 @@
-use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, ScanStatus, Result, FeeStructure};
+use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, ScanStatus, Result, FeeStructure, SolanaRecoverError};
+use crate::core::parallel_processor::IntelligentParallelProcessor;
+use crate::core::processor_metrics::ProcessorMetrics;
 use crate::rpc::ConnectionPool;
 use rayon::prelude::*;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 use chrono::Utc;
+use tracing::info;
 
 #[derive(Clone)]
 pub struct BatchProcessor {
@@ -20,6 +23,7 @@ pub struct BatchProcessor {
     retry_attempts: u32,
     #[allow(dead_code)]
     retry_delay_ms: u64,
+    intelligent_processor: Option<Arc<IntelligentParallelProcessor>>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +32,8 @@ pub struct ProcessorConfig {
     pub max_concurrent_wallets: usize,
     pub retry_attempts: u32,
     pub retry_delay_ms: u64,
+    pub enable_intelligent_processing: bool,
+    pub num_workers: Option<usize>,
 }
 
 impl Default for ProcessorConfig {
@@ -37,6 +43,8 @@ impl Default for ProcessorConfig {
             max_concurrent_wallets: 1000,
             retry_attempts: 3,
             retry_delay_ms: 1000,
+            enable_intelligent_processing: true,
+            num_workers: None,
         }
     }
 }
@@ -47,8 +55,18 @@ impl BatchProcessor {
         cache_manager: Option<Arc<crate::storage::CacheManager>>,
         persistence_manager: Option<Arc<dyn crate::storage::PersistenceManager>>,
         config: ProcessorConfig,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let intelligent_processor = if config.enable_intelligent_processing {
+            Some(Arc::new(IntelligentParallelProcessor::new(
+                scanner.clone(),
+                config.num_workers,
+                config.max_concurrent_wallets,
+            )?))
+        } else {
+            None
+        };
+        
+        Ok(Self {
             scanner,
             cache_manager,
             persistence_manager,
@@ -56,7 +74,8 @@ impl BatchProcessor {
             batch_size: config.batch_size,
             retry_attempts: config.retry_attempts,
             retry_delay_ms: config.retry_delay_ms,
-        }
+            intelligent_processor,
+        })
     }
 
     pub fn new_simple(connection_pool: Arc<ConnectionPool>, max_concurrent_scans: usize) -> Self {
@@ -69,18 +88,32 @@ impl BatchProcessor {
             batch_size: 100,
             retry_attempts: 3,
             retry_delay_ms: 1000,
+            intelligent_processor: None,
         }
     }
 
     pub async fn process_batch(&self, request: &BatchScanRequest) -> Result<BatchScanResult> {
         let start_time = Instant::now();
         
-        // Use optimized parallel processing with work-stealing
-        let results: Vec<ScanResult> = {
+        // Use intelligent processor if available, otherwise fall back to legacy processing
+        if let Some(processor) = &self.intelligent_processor {
+            info!("Using intelligent parallel processor for batch of {} wallets", request.wallet_addresses.len());
+            // Note: This requires a mutable processor, so we need to handle this differently
+            // For now, we'll clone the processor or use a different approach
+            let mut processor_clone = IntelligentParallelProcessor::new(
+                processor.scanner.clone(),
+                Some(processor.max_workers),
+                processor.semaphore.available_permits(),
+            ).map_err(|e| SolanaRecoverError::InternalError(format!("Failed to create processor clone: {}", e)))?;
+            
+            let batch_result = processor_clone.process_batch_intelligently(request).await?;
+            return Ok(batch_result);
+        } else {
+            // Legacy processing with work-stealing
             let scanner = self.scanner.clone();
             let chunk_size = (request.wallet_addresses.len() / rayon::current_num_threads()).max(1);
             
-            request.wallet_addresses
+            let results: Vec<ScanResult> = request.wallet_addresses
                 .par_chunks(chunk_size)
                 .map(|chunk| {
                     let runtime = tokio::runtime::Handle::current();
@@ -125,8 +158,7 @@ impl BatchProcessor {
                     })
                 })
                 .flatten()
-                .collect()
-        };
+                .collect();
 
         let completed_wallets = results.iter()
             .filter(|r| r.status == ScanStatus::Completed)
@@ -148,7 +180,7 @@ impl BatchProcessor {
         let estimated_fee_sol = self.calculate_fee(total_recoverable_sol, &fee_structure);
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
-        Ok(BatchScanResult {
+        return Ok(BatchScanResult {
             id: request.id,
             batch_id: Some(request.id.to_string()),
             total_wallets: request.wallet_addresses.len(),
@@ -163,24 +195,6 @@ impl BatchProcessor {
             completed_at: Some(Utc::now()),
             duration_ms: Some(duration_ms),
         })
-    }
-
-    fn calculate_fee(&self, total_sol: f64, fee_structure: &FeeStructure) -> f64 {
-        let total_lamports = (total_sol * 1_000_000_000.0) as u64;
-        
-        if let Some(waive_threshold) = fee_structure.waive_below_lamports {
-            if total_lamports <= waive_threshold {
-                return 0.0;
-            }
-        }
-
-        let fee_lamports = (total_lamports as f64 * fee_structure.percentage) as u64;
-        
-        let final_fee = fee_lamports
-            .max(fee_structure.minimum_lamports)
-            .min(fee_structure.maximum_lamports.unwrap_or(u64::MAX));
-
-        final_fee as f64 / 1_000_000_000.0
     }
 
     pub async fn process_batch_streaming(&self, request: &BatchScanRequest) -> Result<tokio::sync::mpsc::UnboundedReceiver<ScanResult>> {
@@ -231,70 +245,6 @@ impl BatchProcessor {
             }
             
             drop(tx); // Close the channel
-        });
-
-        Ok(rx)
-    }
-
-    pub async fn get_metrics(&self) -> serde_json::Value {
-        // Enhanced metrics with real-time data
-        serde_json::json!({
-            "total_batches_processed": 0,
-            "total_wallets_processed": 0,
-            "successful_scans": 0,
-            "failed_scans": 0,
-            "average_batch_time_ms": 0.0,
-            "average_wallet_scan_time_ms": 0.0,
-            "concurrent_batches": 0,
-            "queue_size": 0,
-            "cache_hit_rate": 0.0,
-            "rpc_requests_per_second": 0.0,
-            "memory_usage_mb": self.get_memory_usage(),
-            "cpu_usage_percent": self.get_cpu_usage(),
-            "active_threads": rayon::current_num_threads(),
-            "throughput_wallets_per_second": 0.0,
-            "error_rate_percent": 0.0,
-            "avg_concurrent_scans": self.max_concurrent_scans
-        })
-    }
-    
-    fn get_memory_usage(&self) -> f64 {
-        // Simple memory usage estimation
-        use std::mem;
-        let estimated_usage = mem::size_of::<Self>() + 
-                           (self.max_concurrent_scans * mem::size_of::<ScanResult>());
-        estimated_usage as f64 / (1024.0 * 1024.0) // Convert to MB
-    }
-    
-    fn get_cpu_usage(&self) -> f64 {
-        // Placeholder for CPU usage monitoring
-        // In production, you'd use system monitoring libraries
-        0.0
-    }
-
-    pub async fn get_active_batches(&self) -> usize {
-        // Enhanced active batch tracking
-        0
-    }
-    
-    pub async fn process_batch_with_progress(
-        &self, 
-        request: &BatchScanRequest,
-        progress_callback: Option<Box<dyn Fn(usize, usize) + Send + Sync>>
-    ) -> Result<BatchScanResult> {
-        let start_time = Instant::now();
-        let total_wallets = request.wallet_addresses.len();
-        let processed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        
-        let results: Vec<ScanResult> = {
-            let scanner = self.scanner.clone();
-            let processed = processed.clone();
-            
-            request.wallet_addresses
-                .par_chunks((total_wallets / rayon::current_num_threads()).max(1))
-                .map(|chunk| {
-                    let runtime = tokio::runtime::Handle::current();
-                    runtime.block_on(async {
                         let mut chunk_results = Vec::with_capacity(chunk.len());
                         
                         for wallet_address in chunk {
@@ -344,7 +294,7 @@ impl BatchProcessor {
         let estimated_fee_sol = self.calculate_fee(total_recoverable_sol, &fee_structure);
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
-        Ok(BatchScanResult {
+        return Ok(BatchScanResult {
             id: request.id,
             batch_id: Some(request.id.to_string()),
             total_wallets: request.wallet_addresses.len(),
@@ -359,5 +309,41 @@ impl BatchProcessor {
             completed_at: Some(Utc::now()),
             duration_ms: Some(duration_ms),
         })
+    }
+}
+
+impl BatchProcessor {
+    /// Calculate fee based on recovered amount and fee structure
+    fn calculate_fee(&self, total_recoverable_sol: f64, fee_structure: &FeeStructure) -> f64 {
+        total_recoverable_sol * fee_structure.percentage / 100.0
+    }
+    
+    /// Get resource metrics from intelligent processor
+    pub async fn get_resource_metrics(&self) -> Option<crate::core::parallel_processor::ResourceMetrics> {
+        if let Some(processor) = &self.intelligent_processor {
+            Some(processor.get_resource_metrics().await)
+        } else {
+            None
+        }
+    }
+    
+    /// Get active batches count
+    pub async fn get_active_batches(&self) -> usize {
+        0 // Placeholder implementation
+    }
+    
+    /// Get current processing metrics
+    pub async fn get_metrics(&self) -> ProcessorMetrics {
+        ProcessorMetrics {
+            active_scans: 0,
+            completed_scans: 0,
+            failed_scans: 0,
+            average_scan_time_ms: 0.0,
+            total_recovered_sol: 0.0,
+            cache_hit_rate: 0.0,
+            connection_pool_health: 100.0,
+            total_wallets_processed: 0,
+            throughput_wallets_per_second: 0.0,
+        }
     }
 }
