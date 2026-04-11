@@ -52,7 +52,7 @@ pub struct WalletConnection {
 pub trait WalletProvider: Send + Sync {
     async fn connect(&self, credentials: &WalletCredentials) -> crate::core::Result<WalletConnection>;
     async fn get_public_key(&self, connection: &WalletConnection) -> crate::core::Result<String>;
-    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8]) -> crate::core::Result<Vec<u8>>;
+    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8], rpc_url: Option<&str>) -> crate::core::Result<Vec<u8>>;
     async fn disconnect(&self, connection: &WalletConnection) -> crate::core::Result<()>;
 }
 
@@ -197,7 +197,7 @@ impl WalletManager {
             .collect()
     }
 
-    pub async fn sign_with_wallet(&self, connection_id: &str, transaction: &[u8]) -> Result<Vec<u8>> {
+    pub async fn sign_with_wallet(&self, connection_id: &str, transaction: &[u8], rpc_url: Option<&str>) -> Result<Vec<u8>> {
         let connection = self.active_connections.get(connection_id)
             .ok_or_else(|| SolanaRecoverError::AuthenticationError(
                 format!("No active connection found for ID: {}", connection_id)
@@ -208,7 +208,7 @@ impl WalletManager {
                 format!("Unsupported wallet type: {:?}", connection.wallet_type)
             ))?;
 
-        provider.sign_transaction(&connection, transaction).await
+        provider.sign_transaction(&connection, transaction, rpc_url).await
     }
 
     pub async fn get_supported_wallets(&self) -> Vec<WalletType> {
@@ -342,7 +342,7 @@ impl WalletManager {
                 ).await?;
             }
             
-            let result = provider.sign_transaction(&connection, transaction).await;
+            let result = provider.sign_transaction(&connection, transaction, None).await;
             results.push(result);
         }
 
@@ -354,6 +354,7 @@ impl WalletManager {
         connection_id: &str,
         transaction: &[u8],
         user_id: Option<String>,
+        rpc_url: Option<&str>,
     ) -> Result<Vec<u8>> {
         let connection = self.active_connections.get(connection_id)
             .ok_or_else(|| SolanaRecoverError::AuthenticationError(
@@ -368,7 +369,8 @@ impl WalletManager {
         self.nonce_manager.validate_transaction(&tx).await?;
 
         // Validate with RPC simulation
-        let rpc_client = solana_client::rpc_client::RpcClient::new("https://api.devnet.solana.com");
+        let url = rpc_url.unwrap_or("https://api.mainnet-beta.solana.com");
+        let rpc_client = solana_client::rpc_client::RpcClient::new(url);
         let validation_result = self.validator.validate_transaction(transaction, &rpc_client).await?;
 
         if !validation_result.is_valid {
@@ -395,7 +397,7 @@ impl WalletManager {
         }
 
         // Proceed with signing
-        self.sign_with_wallet(connection_id, transaction).await
+        self.sign_with_wallet(connection_id, transaction, rpc_url).await
     }
 
     fn create_security_context(&self, connection_id: &str) -> SecurityContext {

@@ -218,48 +218,15 @@ impl RecoveryManager {
             // Additional security: verify wallet has sufficient balance for fees
             self.verify_wallet_balance(&connection, accounts.len()).await?;
 
-            let _serialized_tx = bincode::serialize(&solana_transaction)
+            let serialized_tx = bincode::serialize(&solana_transaction)
                 .map_err(|e| SolanaRecoverError::SerializationError(e.to_string()))?;
 
-            // Get wallet public key from connection for signing
-            let _wallet_pubkey = match &connection.connection_data {
-                crate::wallet::ConnectionData::PrivateKey { private_key } => {
-                    // Parse private key to get public key
-                    crate::wallet::private_key::PrivateKeyProvider::new()
-                        .parse_private_key(private_key)
-                        .map_err(|_| SolanaRecoverError::AuthenticationError("Failed to parse private key".to_string()))
-                        .map(|kp| kp.pubkey())?
-                }
-                _ => {
-                    return Err(SolanaRecoverError::AuthenticationError("Invalid wallet connection type for private key recovery".to_string()));
-                }
-            };
-
-            // Create keypair for signing
-            let keypair = {
-                let connection = self.wallet_manager.get_connection(connection_id)
-                    .ok_or_else(|| SolanaRecoverError::AuthenticationError(
-                        format!("No active wallet connection found: {}", connection_id)
-                    ))?;
-                
-                match &connection.connection_data {
-                    crate::wallet::ConnectionData::PrivateKey { private_key } => {
-                        // Parse private key to get keypair
-                        crate::wallet::private_key::PrivateKeyProvider::new()
-                            .parse_private_key(private_key)
-                            .map_err(|_| SolanaRecoverError::AuthenticationError("Failed to parse private key".to_string()))?
-                    }
-                    _ => {
-                        return Err(SolanaRecoverError::AuthenticationError("Invalid wallet connection type for private key recovery".to_string()));
-                    }
-                }
-            };
-
-            // Sign with enhanced security - now returns full signed transaction
-            signed_transaction_bytes = self.secure_sign_transaction_with_keypair(
-                &solana_transaction,
-                &keypair,
-                &audit_entry.signature
+            // Sign through WalletManager which handles provider-specific logic
+            info!("Signing transaction through WalletManager for connection: {}", connection_id);
+            signed_transaction_bytes = self.wallet_manager.sign_with_wallet(
+                connection_id,
+                &serialized_tx,
+                Some(&rpc_client.get_client().url())
             ).await?;
             
             // Deserialize to signed transaction to get the signature
@@ -375,15 +342,19 @@ impl RecoveryManager {
                     // Check if this is a token account (owned by SPL Token or Token-2022 program)
                     if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
                         // This is a token account - use close_account instruction
-                        // This will transfer the entire balance (including rent) to the destination
-                        let close_instruction = close_account(
-                            &spl_token::id(), // token program id
-                            account_pubkey,   // account to close
-                            &destination,     // destination for reclaimed lamports
-                            &owner_pubkey,    // actual account owner (must be token account owner)
-                            &[],              // additional signers
-                        )
-                        .map_err(|e| SolanaRecoverError::InternalError(format!("Failed to create close_account instruction: {}", e)))?;
+                        // CRITICAL FIX: Manually build the instruction to avoid program ID mismatch checks in the SPL crate.
+                        // The CloseAccount instruction has tag 9 and expects: [account, destination, authority]
+                        let mut data = vec![9]; 
+                        let accounts = vec![
+                            solana_sdk::instruction::AccountMeta::new(*account_pubkey, false),
+                            solana_sdk::instruction::AccountMeta::new(destination, false),
+                            solana_sdk::instruction::AccountMeta::new_readonly(wallet_pubkey, true),
+                        ];
+                        let close_instruction = solana_sdk::instruction::Instruction::new_with_bytes(
+                            owner_pubkey,
+                            &data,
+                            accounts,
+                        );
                         
                         instructions.push(close_instruction);
                         total_balance += account_info.lamports;
@@ -675,35 +646,6 @@ impl RecoveryManager {
         Ok(())
     }
     
-    async fn secure_sign_transaction_with_keypair(
-        &self,
-        transaction: &Transaction,
-        keypair: &Keypair,
-        _audit_signature: &str, // Audit data stored separately, not mixed into signature
-    ) -> Result<Vec<u8>> {
-        // Debug: log the message account keys to understand what signers are expected
-        info!("Transaction message account keys: {:?}", transaction.message.account_keys);
-        info!("Transaction instructions: {:?}", transaction.message.instructions);
-        info!("Provided keypair pubkey: {:?}", keypair.pubkey());
-        
-        // CRITICAL FIX: Verify the keypair is actually a required signer for this transaction
-        let keypair_pubkey = keypair.pubkey();
-        if !transaction.message.account_keys.contains(&keypair_pubkey) {
-            return Err(SolanaRecoverError::AuthenticationError(
-                format!("Provided keypair {} is not a signer for this transaction", keypair_pubkey)
-            ));
-        }
-        
-        // Create a mutable copy of the transaction for signing
-        let mut tx = transaction.clone();
-        
-        // CRITICAL FIX: Use sign with slice for single signer
-        tx.sign(&[&keypair], tx.message.recent_blockhash);
-        
-        // Return the full serialized signed transaction
-        bincode::serialize(&tx)
-            .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to serialize signed transaction: {}", e)))
-    }
     
     async fn submit_transaction_securely(&self, transaction: &Transaction) -> Result<Signature> {
         let rpc_client = self.connection_pool.get_client().await?;

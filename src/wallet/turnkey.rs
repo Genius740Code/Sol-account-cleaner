@@ -336,7 +336,7 @@ impl WalletProvider for TurnkeyProvider {
         }
     }
 
-    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8]) -> Result<Vec<u8>> {
+    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8], _rpc_url: Option<&str>) -> Result<Vec<u8>> {
         if let ConnectionData::Turnkey { session_token } = &connection.connection_data {
             let session_token = session_token.clone();
             let transaction_hex = hex::encode(transaction);

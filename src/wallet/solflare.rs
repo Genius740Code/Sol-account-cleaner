@@ -291,7 +291,7 @@ impl WalletProvider for SolflareProvider {
         }
     }
 
-    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8]) -> Result<Vec<u8>> {
+    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8], _rpc_url: Option<&str>) -> Result<Vec<u8>> {
         if let ConnectionData::Solflare { session_token } = &connection.connection_data {
             // Update session activity
             {

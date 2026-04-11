@@ -179,7 +179,7 @@ impl WalletProvider for PrivateKeyProvider {
         }
     }
 
-    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8]) -> crate::core::Result<Vec<u8>> {
+    async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8], rpc_url: Option<&str>) -> crate::core::Result<Vec<u8>> {
         if let ConnectionData::PrivateKey { private_key } = &connection.connection_data {
             let security_context = self.create_security_context(&connection.id);
             let wallet_address: String = self.get_public_key(connection).await?;
@@ -204,7 +204,8 @@ impl WalletProvider for PrivateKeyProvider {
             ).await?;
             
             // Validate transaction with RPC client
-            let rpc_client = solana_client::rpc_client::RpcClient::new("https://api.devnet.solana.com");
+            let url = rpc_url.unwrap_or("https://api.mainnet-beta.solana.com");
+            let rpc_client = solana_client::rpc_client::RpcClient::new(url);
             let validation_result = self.validate_transaction_with_retry(transaction, &rpc_client, self.max_signing_attempts).await?;
             
             // Check for replay attacks
