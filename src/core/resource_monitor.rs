@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
-use std::thread;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
-use tracing::{info, debug, warn, error};
+use tracing::{info, warn};
 use std::collections::VecDeque;
 
 /// Comprehensive system resource monitoring

@@ -17,6 +17,7 @@ pub struct EnhancedConnectionPool {
     endpoints: Arc<RwLock<Vec<WeightedEndpoint>>>,
     connection_pools: Arc<DashMap<String, Arc<BasicConnectionPool>>>,
     health_checker: Arc<HealthChecker>,
+    #[allow(dead_code)]
     load_balancer: Arc<LoadBalancer>,
     circuit_breakers: Arc<DashMap<String, Arc<CircuitBreaker>>>,
     metrics: Arc<RwLock<EnhancedPoolMetrics>>,
@@ -186,7 +187,8 @@ impl EnhancedConnectionPool {
 
     async fn select_endpoint(&self) -> Result<String> {
         let endpoints = self.endpoints.read().await;
-        self.endpoint_selector.select_endpoint(&*endpoints).await
+        let selected_endpoint = self.endpoint_selector.select_endpoint(&*endpoints).await?;
+        Ok(selected_endpoint.endpoint.url.clone())
     }
 
     async fn get_client_for_endpoint(&self, endpoint_url: &str) -> Result<Arc<RpcClientWrapper>> {
@@ -394,7 +396,9 @@ impl HealthChecker {
 
 /// Load balancer for endpoint selection
 pub struct LoadBalancer {
+    #[allow(dead_code)]
     strategy: LoadBalanceStrategy,
+    #[allow(dead_code)]
     round_robin_counter: tokio::sync::Mutex<usize>,
 }
 
@@ -406,6 +410,7 @@ impl LoadBalancer {
         }
     }
 
+    #[allow(dead_code)]
     async fn select_endpoint(&self, endpoints: &[WeightedEndpoint]) -> Result<String> {
         let healthy_endpoints: Vec<&WeightedEndpoint> = endpoints
             .iter()
@@ -594,16 +599,21 @@ impl BasicConnectionPool {
 
 /// Connection multiplexer for efficient connection reuse
 pub struct ConnectionMultiplexer {
+    #[allow(dead_code)]
     max_concurrent_requests: usize,
     active_requests: Arc<tokio::sync::Semaphore>,
     connection_cache: Arc<DashMap<String, Arc<RpcClientWrapper>>>,
+    #[allow(dead_code)]
     request_queue: Arc<tokio::sync::Mutex<Vec<PendingRequest>>>,
 }
 
 #[derive(Debug)]
 struct PendingRequest {
+    #[allow(dead_code)]
     endpoint_url: String,
+    #[allow(dead_code)]
     response_tx: tokio::sync::oneshot::Sender<Arc<RpcClientWrapper>>,
+    #[allow(dead_code)]
     timestamp: Instant,
 }
 
@@ -649,6 +659,7 @@ impl ConnectionMultiplexer {
 /// Advanced endpoint selector with adaptive load balancing
 pub struct EndpointSelector {
     strategy: LoadBalanceStrategy,
+    #[allow(dead_code)]
     enable_adaptive: bool,
     health_threshold: f64,
     round_robin_counter: tokio::sync::Mutex<usize>,
@@ -656,7 +667,7 @@ pub struct EndpointSelector {
 }
 
 #[derive(Debug, Clone, Default)]
-struct EndpointStats {
+pub struct EndpointStats {
     total_requests: u64,
     successful_requests: u64,
     avg_response_time: f64,
@@ -675,7 +686,7 @@ impl EndpointSelector {
         }
     }
     
-    pub async fn select_endpoint(&self, endpoints: &[WeightedEndpoint]) -> Result<&WeightedEndpoint> {
+    pub async fn select_endpoint<'a>(&self, endpoints: &'a [WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
         let healthy_endpoints: Vec<&WeightedEndpoint> = endpoints
             .iter()
             .filter(|e| e.endpoint.healthy && e.success_rate >= self.health_threshold)
@@ -698,14 +709,14 @@ impl EndpointSelector {
         Ok(selected_endpoint)
     }
     
-    async fn select_round_robin(&self, endpoints: &[&WeightedEndpoint]) -> Result<&WeightedEndpoint> {
+    async fn select_round_robin<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
         let mut counter = self.round_robin_counter.lock().await;
         let index = *counter % endpoints.len();
         *counter += 1;
         Ok(endpoints[index])
     }
     
-    async fn select_weighted_round_robin(&self, endpoints: &[&WeightedEndpoint]) -> Result<&WeightedEndpoint> {
+    async fn select_weighted_round_robin<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
         let total_weight: f64 = endpoints.iter().map(|e| e.weight).sum();
         let mut random_weight = rand::random::<f64>() * total_weight;
         
@@ -719,7 +730,7 @@ impl EndpointSelector {
         Ok(endpoints[0])
     }
     
-    async fn select_least_connections(&self, endpoints: &[&WeightedEndpoint]) -> Result<&WeightedEndpoint> {
+    async fn select_least_connections<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
         let endpoint = endpoints
             .iter()
             .min_by(|a, b| a.response_time_ms.partial_cmp(&b.response_time_ms).unwrap())
@@ -727,7 +738,7 @@ impl EndpointSelector {
         Ok(endpoint)
     }
     
-    async fn select_by_response_time(&self, endpoints: &[&WeightedEndpoint]) -> Result<&WeightedEndpoint> {
+    async fn select_by_response_time<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
         let endpoint = endpoints
             .iter()
             .min_by(|a, b| a.response_time_ms.partial_cmp(&b.response_time_ms).unwrap())

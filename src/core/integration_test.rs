@@ -3,16 +3,16 @@ use crate::core::parallel_tests::ParallelProcessingTests;
 use crate::core::processor::{BatchProcessor, ProcessorConfig};
 use crate::core::benchmarks::PerformanceBenchmarks;
 use crate::core::resource_monitor::SystemResourceMonitor;
-use crate::core::thread_pool_optimizer::{OptimizedThreadPool, OptimizedThreadPoolBuilder};
+use crate::core::thread_pool_optimizer::OptimizedThreadPoolBuilder;
 use crate::core::scanner::WalletScanner;
-use crate::core::{BatchScanRequest, ScanResult, ScanStatus};
+use crate::core::{BatchScanRequest};
 use crate::rpc::mock::MockConnectionPool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::Utc;
-use tracing::{info, debug, warn, error};
+use tracing::{info};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 /// Integration test demonstrating the complete parallel processing system

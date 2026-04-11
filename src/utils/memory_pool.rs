@@ -4,13 +4,14 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tracing::info;
 
+/// Generic memory pool for object reuse
 #[derive(Clone)]
 pub struct MemoryPool<T> {
     pool: Arc<RwLock<Vec<T>>>,
     factory: Arc<dyn Fn() -> T + Send + Sync>,
     max_size: usize,
     created: Arc<RwLock<Instant>>,
-    stats: Arc<RwLock<MemoryPoolStats>>,
+    pub stats: Arc<RwLock<MemoryPoolStats>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -81,10 +82,12 @@ where
         }
     }
 
-    pub fn stats(&self) -> MemoryPoolStats {
+    /// Get memory pool statistics
+    pub fn get_stats(&self) -> MemoryPoolStats {
         self.stats.read().clone()
     }
-
+    
+    
     pub fn clear(&self) {
         let mut pool = self.pool.write();
         let mut stats = self.stats.write();
@@ -130,11 +133,31 @@ impl<T: Default + Clone> std::ops::DerefMut for PooledItem<T> {
     }
 }
 
+impl<T: Default + Clone> PooledItem<T> {
+    /// Create a new pooled item without a pool (for direct allocation)
+    pub fn new(item: T) -> Self {
+        Self {
+            item: Some(item),
+            pool: None,
+        }
+    }
+}
+
 impl<T: Default + Clone> Drop for PooledItem<T> {
     fn drop(&mut self) {
         if let (Some(item), Some(pool)) = (self.item.take(), &self.pool) {
             pool.return_item(item);
         }
+    }
+}
+
+impl<T> std::fmt::Debug for MemoryPool<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryPool")
+            .field("max_size", &self.max_size)
+            .field("created", &self.created)
+            .field("stats", &self.stats)
+            .finish()
     }
 }
 
@@ -327,9 +350,9 @@ impl BufferPool {
 
     pub fn get_stats(&self) -> BufferPoolStats {
         BufferPoolStats {
-            small_pool: self.small_buffers.stats(),
-            medium_pool: self.medium_buffers.stats(),
-            large_pool: self.large_buffers.stats(),
+            small_pool: self.small_buffers.get_stats(),
+            medium_pool: self.medium_buffers.get_stats(),
+            large_pool: self.large_buffers.get_stats(),
         }
     }
 }
@@ -371,14 +394,14 @@ mod tests {
         
         // Test acquisition and return
         let item = pool.acquire();
-        assert_eq!(pool.stats().misses, 1);
+        assert_eq!(pool.get_stats().misses, 1);
         
         drop(item);
-        assert_eq!(pool.stats().deallocations, 1);
+        assert_eq!(pool.get_stats().deallocations, 1);
         
         // Test reuse
         let item2 = pool.acquire();
-        assert_eq!(pool.stats().hits, 1);
+        assert_eq!(pool.get_stats().hits, 1);
         
         drop(item2);
     }

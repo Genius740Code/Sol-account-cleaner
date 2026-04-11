@@ -1,20 +1,20 @@
 use crate::core::parallel_processor::{
-    IntelligentParallelProcessor, TaskQueue, ProgressTracker, 
-    ResourceMonitor, DynamicBatchSizer, Priority, WalletTask
+    IntelligentParallelProcessor, WorkStealingQueue, ProgressTracker, 
+    ResourceMonitorTrait, DynamicBatchSizer, Priority, WalletTask
 };
 use crate::core::scanner::WalletScanner;
-use crate::core::{BatchScanRequest, ScanResult, ScanStatus};
+use crate::core::{BatchScanRequest};
 use crate::rpc::mock::MockConnectionPool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use chrono::Utc;
 use std::collections::HashMap;
-use tokio::sync::Barrier;
-use tracing::{info, debug, warn, error};
+use tracing::{info};
 
 /// Comprehensive test suite for parallel processing
 pub struct ParallelProcessingTests {
+    #[allow(dead_code)]
     mock_pool: Arc<MockConnectionPool>,
     scanner: Arc<WalletScanner>,
 }
@@ -76,17 +76,19 @@ impl ParallelProcessingTests {
         let mut details = Vec::new();
         
         // Test basic task queue functionality
-        let queue: TaskQueue<i32> = TaskQueue::new();
+        let queue: WorkStealingQueue<i32> = WorkStealingQueue::new(4);
         
         // Push work items
         for i in 0..100 {
             queue.push(i);
         }
         
-        // Pop items sequentially (simplified test)
+        // Get items sequentially (simplified test)
         let mut collected_items = Vec::new();
-        while let Some(item) = queue.pop() {
-            collected_items.push(item);
+        for worker_id in 0..4 {
+            while let Some(item) = queue.get_task(worker_id) {
+                collected_items.push(item);
+            }
         }
         
         if collected_items.len() == 100 {
@@ -180,7 +182,7 @@ impl ParallelProcessingTests {
         let mut success = true;
         let mut details = Vec::new();
         
-        let monitor = ResourceMonitor::new();
+        let monitor = crate::core::parallel_processor::ResourceMonitor::new();
         let initial_metrics = monitor.get_metrics();
         
         details.push(format!("Initial CPU: {:.1}%", initial_metrics.cpu_usage_percent));
@@ -227,8 +229,8 @@ impl ParallelProcessingTests {
         let mut success = true;
         let mut details = Vec::new();
         
-        let monitor = Arc::new(ResourceMonitor::new());
-        let sizer = DynamicBatchSizer::new(100, Arc::clone(&monitor));
+        let monitor = Arc::new(crate::core::parallel_processor::ResourceMonitor::new());
+        let sizer = DynamicBatchSizer::new(100, Arc::clone(&monitor) as Arc<dyn ResourceMonitorTrait>);
         
         // Test with low resource usage
         monitor.update_cpu_usage(25.0);
@@ -657,7 +659,6 @@ impl ParallelProcessingTests {
     
     fn get_memory_usage(&self) -> u64 {
         // Simple memory usage estimation
-        use std::mem;
         // In a real implementation, you'd use system APIs to get actual memory usage
         100 // Placeholder
     }

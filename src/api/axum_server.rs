@@ -487,14 +487,14 @@ mod tests {
     #[tokio::test]
     async fn test_health_check() {
         let response = health_check().await;
-        let (status, _) = response.into_response().into_parts();
+        let status = response.into_response().status();
         assert_eq!(status, StatusCode::OK);
     }
     
     #[tokio::test]
     async fn test_ping() {
         let response = ping().await;
-        let (status, _) = response.into_response().into_parts();
+        let status = response.into_response().status();
         assert_eq!(status, StatusCode::OK);
     }
 }

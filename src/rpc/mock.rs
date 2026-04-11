@@ -1,6 +1,5 @@
 use crate::core::{Result, SolanaRecoverError};
 use crate::rpc::ConnectionPoolTrait;
-use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use async_trait::async_trait;
 use std::time::Duration;
@@ -12,7 +11,7 @@ pub struct MockConnectionPool {
 }
 
 impl MockConnectionPool {
-    pub fn new(endpoints: Vec<crate::core::RpcEndpoint>, max_connections: usize) -> crate::core::Result<Self> {
+    pub fn new(_endpoints: Vec<String>, _max_connections: usize) -> crate::core::Result<Self> {
         Ok(Self {
             call_count: std::sync::atomic::AtomicU32::new(0),
             delay_ms: 10,

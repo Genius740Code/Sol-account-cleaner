@@ -1,8 +1,6 @@
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuildError;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 use tracing::{info, debug, warn, error};
 use std::collections::HashMap;
 
@@ -257,7 +255,7 @@ impl OptimizedThreadPool {
     }
     
     /// Set CPU affinity for the current thread
-    fn set_thread_affinity(core_id: usize) -> Result<(), String> {
+    fn set_thread_affinity(_core_id: usize) -> Result<(), String> {
         #[cfg(target_os = "linux")]
         {
             use libc::{cpu_set_t, sched_setaffinity, sched_getaffinity};
@@ -266,7 +264,7 @@ impl OptimizedThreadPool {
             unsafe {
                 let mut cpuset: cpu_set_t = mem::zeroed();
                 libc::CPU_ZERO(&mut cpuset);
-                libc::CPU_SET(core_id, &mut cpuset);
+                libc::CPU_SET(_core_id, &mut cpuset);
                 
                 let result = sched_setaffinity(0, mem::size_of::<cpu_set_t>(), &cpuset);
                 if result == 0 {
@@ -428,7 +426,7 @@ mod tests {
     
     #[test]
     fn test_numa_detection() {
-        let topology = OptimizedThreadPool::detect_numa_topology();
+        let _topology = OptimizedThreadPool::detect_numa_topology();
         // Should not panic, may return None on non-NUMA systems
     }
 }

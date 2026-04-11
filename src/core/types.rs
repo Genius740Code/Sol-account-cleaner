@@ -3,7 +3,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::vec::Vec;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WalletInfo {
     pub address: String,
     pub pubkey: Pubkey,
@@ -15,7 +15,7 @@ pub struct WalletInfo {
     pub scan_time_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EmptyAccount {
     pub address: String,
     pub lamports: u64,
@@ -23,7 +23,7 @@ pub struct EmptyAccount {
     pub mint: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ScanResult {
     pub id: Uuid,
     pub wallet_address: String,
@@ -33,8 +33,9 @@ pub struct ScanResult {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub enum ScanStatus {
+    #[default]
     Pending,
     InProgress,
     Completed,
@@ -50,7 +51,7 @@ pub struct BatchScanRequest {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BatchScanResult {
     pub id: Uuid,
     pub batch_id: Option<String>, // For backward compatibility
@@ -135,7 +136,7 @@ pub struct RecoveryRequest {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RecoveryTransaction {
     pub id: Uuid,
     pub recovery_request_id: Uuid,
@@ -151,8 +152,9 @@ pub struct RecoveryTransaction {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum TransactionStatus {
+    #[default]
     Pending,
     Signing,
     Signed,

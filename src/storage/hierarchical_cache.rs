@@ -35,6 +35,7 @@ pub struct HierarchicalCache {
     l1_cache: Arc<CacheManager>,      // Hot data (1 minute TTL)
     l2_cache: Arc<CacheManager>,      // Warm data (15 minute TTL)
     l3_cache: Option<Arc<RedisCacheManager>>, // Cold data (1 hour TTL)
+    #[allow(dead_code)]
     compression: Arc<CompressionEngine>,
     cache_warmer: Arc<CacheWarmer>,
     config: HierarchicalCacheConfig,
@@ -454,12 +455,12 @@ mod tests {
         let cache = HierarchicalCache::new(config).await.unwrap();
 
         let key = "test_key";
-        let value = "test_value";
+        let value = "test_value".to_string();
 
         // Test set and get
         cache.set(key, &value).await.unwrap();
         let retrieved: Option<String> = cache.get(key).await.unwrap();
-        assert_eq!(retrieved, Some(value.to_string()));
+        assert_eq!(retrieved, Some(value));
 
         // Test delete
         let deleted = cache.delete(key).await.unwrap();

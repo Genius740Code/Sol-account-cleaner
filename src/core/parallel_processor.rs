@@ -1,15 +1,12 @@
-use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, ScanStatus, Result, WalletInfo};
-use crate::core::resource_monitor::SystemResourceMonitor;
-use crate::rpc::ConnectionPoolTrait;
+use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, ScanStatus, Result};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use chrono::Utc;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
-use tokio::sync::{Semaphore, Barrier};
+use tokio::sync::Semaphore;
 use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
-use tracing::{info, debug, warn, error};
 
 /// Priority levels for wallet processing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -191,6 +188,11 @@ impl ProgressTracker {
     }
 }
 
+/// Trait for resource monitoring implementations
+pub trait ResourceMonitorTrait: Send + Sync {
+    fn get_metrics(&self) -> ResourceMetrics;
+}
+
 /// Resource monitoring for system health
 #[derive(Debug, Clone)]
 pub struct ResourceMonitor {
@@ -232,6 +234,12 @@ impl ResourceMonitor {
     }
 }
 
+impl ResourceMonitorTrait for ResourceMonitor {
+    fn get_metrics(&self) -> ResourceMetrics {
+        self.get_metrics()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ResourceMetrics {
     pub cpu_usage_percent: f64,
@@ -241,17 +249,17 @@ pub struct ResourceMetrics {
 }
 
 /// Dynamic batch sizer based on system load
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DynamicBatchSizer {
     pub base_batch_size: usize,
     pub min_batch_size: usize,
     pub max_batch_size: usize,
-    resource_monitor: Arc<ResourceMonitor>,
+    resource_monitor: Arc<dyn ResourceMonitorTrait>,
     last_adjustment: Arc<AtomicU64>,
 }
 
 impl DynamicBatchSizer {
-    pub fn new(base_batch_size: usize, resource_monitor: Arc<ResourceMonitor>) -> Self {
+    pub fn new(base_batch_size: usize, resource_monitor: Arc<dyn ResourceMonitorTrait>) -> Self {
         Self {
             base_batch_size,
             min_batch_size: base_batch_size / 4,
@@ -302,7 +310,7 @@ pub struct IntelligentParallelProcessor {
     pub work_queue: Arc<WorkStealingQueue<WalletTask>>,
     pub worker_pool: Arc<rayon::ThreadPool>,
     pub progress_tracker: Arc<ProgressTracker>,
-    pub resource_monitor: Arc<SystemResourceMonitor>,
+    pub resource_monitor: Arc<ResourceMonitor>,
     pub batch_sizer: Arc<DynamicBatchSizer>,
     pub semaphore: Arc<Semaphore>,
     pub scanner: Arc<crate::core::scanner::WalletScanner>,
@@ -324,8 +332,8 @@ impl IntelligentParallelProcessor {
             .build()
             .map_err(|e| crate::core::SolanaRecoverError::InternalError(format!("Failed to create thread pool: {}", e)))?;
         
-        let resource_monitor = Arc::new(SystemResourceMonitor::new(crate::core::resource_monitor::MonitorConfig::default()));
-        let resource_monitor_for_sizer: Arc<dyn ResourceMonitor> = resource_monitor.clone();
+        let resource_monitor = Arc::new(ResourceMonitor::new());
+        let resource_monitor_for_sizer: Arc<dyn ResourceMonitorTrait> = resource_monitor.clone();
         
         Ok(Self {
             work_queue,
@@ -504,13 +512,8 @@ impl IntelligentParallelProcessor {
     }
     
     pub async fn get_resource_metrics(&self) -> ResourceMetrics {
-        let snapshot = self.resource_monitor.get_current_metrics().await;
-        ResourceMetrics {
-            cpu_usage_percent: snapshot.cpu.total_usage,
-            memory_usage_mb: snapshot.memory.used_memory_mb,
-            network_requests_per_second: snapshot.network.requests_per_second,
-            active_threads: snapshot.process.thread_count,
-        }
+        let snapshot = self.resource_monitor.get_metrics();
+        snapshot
     }
     
     pub fn get_optimal_batch_size(&self) -> usize {

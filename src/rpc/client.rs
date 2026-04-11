@@ -1,5 +1,5 @@
 use crate::core::{Result, SolanaRecoverError};
-use crate::storage::{HierarchicalCache, HierarchicalCacheConfig, CachedWalletInfo};
+use crate::storage::{HierarchicalCache, HierarchicalCacheConfig};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_client::rpc_filter::{RpcFilterType, Memcmp, MemcmpEncodedBytes};
@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use moka::future::Cache;
 use base64::Engine;
 use std::str::FromStr;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 pub struct RpcClientWrapper {
     client: Arc<RpcClient>,

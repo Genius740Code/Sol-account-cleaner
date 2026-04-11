@@ -1,20 +1,19 @@
-use crate::core::parallel_processor::IntelligentParallelProcessor;
-use crate::core::parallel_tests::ParallelProcessingTests;
 use crate::core::processor::{BatchProcessor, ProcessorConfig};
+use crate::core::parallel_processor::IntelligentParallelProcessor;
 use crate::core::scanner::WalletScanner;
-use crate::core::{BatchScanRequest, ScanResult, ScanStatus};
+use crate::core::{BatchScanRequest};
 use crate::rpc::mock::MockConnectionPool;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::Utc;
-use rayon::prelude::*;
 use serde::{Serialize, Deserialize};
-use tracing::{info, debug, warn, error};
+use tracing::info;
 
 /// Performance benchmark suite
 pub struct PerformanceBenchmarks {
+    #[allow(dead_code)]
     mock_pool: Arc<MockConnectionPool>,
     scanner: Arc<WalletScanner>,
 }
@@ -97,7 +96,7 @@ impl PerformanceBenchmarks {
             created_at: Utc::now(),
         };
         
-        let sequential_result = sequential_processor.process_batch(&sequential_request).await;
+        let _sequential_result = sequential_processor.process_batch(&sequential_request).await;
         let sequential_duration = sequential_start.elapsed();
         
         // Test parallel processing
@@ -126,7 +125,7 @@ impl PerformanceBenchmarks {
             created_at: Utc::now(),
         };
         
-        let parallel_result = parallel_processor.process_batch(&parallel_request).await;
+        let _parallel_result = parallel_processor.process_batch(&parallel_request).await;
         let parallel_duration = parallel_start.elapsed();
         
         // Calculate performance improvement
@@ -304,7 +303,7 @@ impl PerformanceBenchmarks {
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .map(|(size, throughput, efficiency)| (*size, *throughput, *efficiency));
         
-        if let Some((size, throughput, efficiency)) = optimal_batch {
+        if let Some((size, throughput, _efficiency)) = optimal_batch {
             metrics.push(BenchmarkMetric {
                 name: "Optimal Batch Size".to_string(),
                 value: size as f64,

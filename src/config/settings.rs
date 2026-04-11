@@ -7,6 +7,7 @@ pub struct Config {
     pub rpc: RpcConfig,
     pub scanner: ScannerConfig,
     pub cache: CacheConfig,
+    pub memory: MemoryConfig,
     pub turnkey: TurnkeyConfig,
     pub logging: LoggingConfig,
     pub database: DatabaseConfig,
@@ -49,6 +50,130 @@ impl From<crate::config::DatabaseConfig> for crate::storage::DatabaseConfig {
         crate::storage::DatabaseConfig {
             database_url: config.database_url,
             max_connections: config.max_connections,
+        }
+    }
+}
+
+impl From<crate::config::MemoryConfig> for crate::utils::enhanced_memory_manager::MemoryManagerConfig {
+    fn from(config: crate::config::MemoryConfig) -> Self {
+        crate::utils::enhanced_memory_manager::MemoryManagerConfig {
+            max_pool_sizes: crate::utils::enhanced_memory_manager::PoolSizes {
+                wallet_info_pool: config.pool_sizes.wallet_info_pool,
+                empty_account_pool: config.pool_sizes.empty_account_pool,
+                scan_result_pool: config.pool_sizes.scan_result_pool,
+                batch_scan_result_pool: config.pool_sizes.batch_scan_result_pool,
+                recovery_transaction_pool: config.pool_sizes.recovery_transaction_pool,
+                string_pool: config.pool_sizes.string_pool,
+                vec_string_pool: config.pool_sizes.vec_string_pool,
+                vec_u8_pool: config.pool_sizes.vec_u8_pool,
+            },
+            gc_config: crate::utils::enhanced_memory_manager::GcConfig {
+                interval_seconds: config.gc_config.interval_seconds,
+                memory_threshold_percent: config.gc_config.memory_threshold_percent,
+                force_gc_interval_seconds: config.gc_config.force_gc_interval_seconds,
+                enable_adaptive_gc: config.gc_config.enable_adaptive_gc,
+            },
+            monitoring_config: crate::utils::enhanced_memory_manager::MonitoringConfig {
+                collection_interval_seconds: config.monitoring_config.collection_interval_seconds,
+                enable_leak_detection: config.monitoring_config.enable_leak_detection,
+                leak_detection_threshold_seconds: config.monitoring_config.leak_detection_threshold_seconds,
+                enable_memory_profiling: config.monitoring_config.enable_memory_profiling,
+            },
+            enable_object_pooling: config.enable_object_pooling,
+            enable_memory_monitoring: config.enable_memory_monitoring,
+            enable_auto_optimization: config.enable_auto_optimization,
+        }
+    }
+}
+
+impl From<super::MemoryConfig> for crate::utils::advanced_buffer_pools::BufferPoolConfig {
+    fn from(config: crate::config::MemoryConfig) -> Self {
+        crate::utils::advanced_buffer_pools::BufferPoolConfig {
+            pool_sizes: crate::utils::advanced_buffer_pools::BufferPoolSizes {
+                tiny_pool_size: config.buffer_config.tiny_pool_size,
+                small_pool_size: config.buffer_config.small_pool_size,
+                medium_pool_size: config.buffer_config.medium_pool_size,
+                large_pool_size: config.buffer_config.large_pool_size,
+                xlarge_pool_size: config.buffer_config.xlarge_pool_size,
+                xxlarge_pool_size: config.buffer_config.xxlarge_pool_size,
+                jumbo_pool_size: config.buffer_config.jumbo_pool_size,
+                rpc_request_pool_size: config.pool_sizes.rpc_request_pool,
+                rpc_response_pool_size: config.pool_sizes.rpc_response_pool,
+                account_data_pool_size: config.pool_sizes.account_data_pool,
+                transaction_pool_size: config.pool_sizes.recovery_transaction_pool,
+            },
+            enable_compression: config.buffer_config.enable_compression,
+            enable_zero_copy: config.buffer_config.enable_zero_copy,
+            max_buffer_age_seconds: config.buffer_config.max_buffer_age_seconds,
+            cleanup_interval_seconds: config.buffer_config.cleanup_interval_seconds,
+            enable_stats_collection: config.enable_memory_monitoring,
+        }
+    }
+}
+
+impl From<crate::config::MemoryConfig> for crate::utils::gc_scheduler::GcSchedulerConfig {
+    fn from(config: crate::config::MemoryConfig) -> Self {
+        crate::utils::gc_scheduler::GcSchedulerConfig {
+            base_interval_seconds: config.gc_config.interval_seconds,
+            max_interval_seconds: config.gc_config.force_gc_interval_seconds,
+            min_interval_seconds: 10,
+            memory_pressure_threshold: config.gc_config.memory_threshold_percent,
+            enable_adaptive_scheduling: config.gc_config.enable_adaptive_gc,
+            max_concurrent_gc: config.gc_config.max_concurrent_gc,
+            gc_timeout_seconds: config.gc_config.gc_timeout_seconds,
+            enable_incremental_gc: config.gc_config.enable_incremental_gc,
+            incremental_batch_size: 100,
+            priority_config: crate::utils::gc_scheduler::GcPriorityConfig::default(),
+            performance_targets: crate::utils::gc_scheduler::GcPerformanceTargets::default(),
+        }
+    }
+}
+
+impl From<crate::config::MemoryConfig> for crate::utils::memory_monitor::MemoryMonitorConfig {
+    fn from(config: crate::config::MemoryConfig) -> Self {
+        crate::utils::memory_monitor::MemoryMonitorConfig {
+            monitoring_interval_seconds: config.monitoring_config.collection_interval_seconds,
+            history_retention_seconds: config.monitoring_config.history_retention_seconds,
+            enable_profiling: config.monitoring_config.enable_memory_profiling,
+            enable_leak_detection: config.monitoring_config.enable_leak_detection,
+            enable_performance_monitoring: config.enable_memory_monitoring,
+            alert_thresholds: crate::utils::memory_monitor::AlertThresholds::default(),
+            performance_targets: crate::utils::memory_monitor::PerformanceTargets::default(),
+            enable_real_time_events: config.monitoring_config.enable_real_time_events,
+            max_history_size: 1000,
+        }
+    }
+}
+
+impl From<crate::config::MemoryConfig> for crate::utils::memory_integration::MemoryIntegrationConfig {
+    fn from(config: crate::config::MemoryConfig) -> Self {
+        crate::utils::memory_integration::MemoryIntegrationConfig {
+            enable_scanner_pooling: config.enable_object_pooling,
+            enable_rpc_pooling: config.enable_object_pooling,
+            enable_buffer_pooling: config.enable_object_pooling,
+            enable_auto_gc: config.enable_auto_optimization,
+            enable_monitoring: config.enable_memory_monitoring,
+            scanner_config: crate::utils::memory_integration::ScannerMemoryConfig {
+                wallet_info_pool_size: config.pool_sizes.wallet_info_pool,
+                empty_account_pool_size: config.pool_sizes.empty_account_pool,
+                scan_result_pool_size: config.pool_sizes.scan_result_pool,
+                batch_scan_result_pool_size: config.pool_sizes.batch_scan_result_pool,
+                enable_scan_tracking: config.enable_memory_monitoring,
+            },
+            rpc_config: crate::utils::memory_integration::RpcMemoryConfig {
+                request_buffer_pool_size: config.pool_sizes.rpc_request_pool,
+                response_buffer_pool_size: config.pool_sizes.rpc_response_pool,
+                account_data_buffer_pool_size: config.pool_sizes.account_data_pool,
+                enable_rpc_tracking: config.enable_memory_monitoring,
+                max_request_size: 64 * 1024,  // 64KB
+                max_response_size: 1024 * 1024, // 1MB
+            },
+            buffer_config: crate::utils::memory_integration::BufferIntegrationConfig {
+                enable_size_tiered_pools: true,
+                enable_rpc_specialized_buffers: true,
+                cleanup_interval_seconds: config.buffer_config.cleanup_interval_seconds,
+                max_buffer_age_seconds: config.buffer_config.max_buffer_age_seconds,
+            },
         }
     }
 }
@@ -120,6 +245,68 @@ pub struct LoggingConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    pub enable_object_pooling: bool,
+    pub enable_memory_monitoring: bool,
+    pub enable_auto_optimization: bool,
+    pub pool_sizes: MemoryPoolSizes,
+    pub gc_config: MemoryGcConfig,
+    pub monitoring_config: MemoryMonitoringConfig,
+    pub buffer_config: MemoryBufferConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryPoolSizes {
+    pub wallet_info_pool: usize,
+    pub empty_account_pool: usize,
+    pub scan_result_pool: usize,
+    pub batch_scan_result_pool: usize,
+    pub recovery_transaction_pool: usize,
+    pub string_pool: usize,
+    pub vec_string_pool: usize,
+    pub vec_u8_pool: usize,
+    pub rpc_request_pool: usize,
+    pub rpc_response_pool: usize,
+    pub account_data_pool: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryGcConfig {
+    pub interval_seconds: u64,
+    pub memory_threshold_percent: f64,
+    pub force_gc_interval_seconds: u64,
+    pub enable_adaptive_gc: bool,
+    pub max_concurrent_gc: usize,
+    pub gc_timeout_seconds: u64,
+    pub enable_incremental_gc: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryMonitoringConfig {
+    pub collection_interval_seconds: u64,
+    pub enable_leak_detection: bool,
+    pub leak_detection_threshold_seconds: u64,
+    pub enable_memory_profiling: bool,
+    pub enable_real_time_events: bool,
+    pub history_retention_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryBufferConfig {
+    pub tiny_pool_size: usize,
+    pub small_pool_size: usize,
+    pub medium_pool_size: usize,
+    pub large_pool_size: usize,
+    pub xlarge_pool_size: usize,
+    pub xxlarge_pool_size: usize,
+    pub jumbo_pool_size: usize,
+    pub enable_compression: bool,
+    pub enable_zero_copy: bool,
+    pub max_buffer_age_seconds: u64,
+    pub cleanup_interval_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
     pub database_url: String,
     pub max_connections: u32,
@@ -132,6 +319,7 @@ impl Default for Config {
             rpc: RpcConfig::default(),
             scanner: ScannerConfig::default(),
             cache: CacheConfig::default(),
+            memory: MemoryConfig::default(),
             turnkey: TurnkeyConfig::default(),
             logging: LoggingConfig::default(),
             database: DatabaseConfig::default(),
@@ -210,6 +398,83 @@ impl Default for LoggingConfig {
             level: "info".to_string(),
             format: "json".to_string(),
             file_path: None,
+        }
+    }
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            enable_object_pooling: true,
+            enable_memory_monitoring: true,
+            enable_auto_optimization: true,
+            pool_sizes: MemoryPoolSizes::default(),
+            gc_config: MemoryGcConfig::default(),
+            monitoring_config: MemoryMonitoringConfig::default(),
+            buffer_config: MemoryBufferConfig::default(),
+        }
+    }
+}
+
+impl Default for MemoryPoolSizes {
+    fn default() -> Self {
+        Self {
+            wallet_info_pool: 10000,
+            empty_account_pool: 50000,
+            scan_result_pool: 10000,
+            batch_scan_result_pool: 1000,
+            recovery_transaction_pool: 5000,
+            string_pool: 100000,
+            vec_string_pool: 20000,
+            vec_u8_pool: 50000,
+            rpc_request_pool: 1000,
+            rpc_response_pool: 1000,
+            account_data_pool: 2000,
+        }
+    }
+}
+
+impl Default for MemoryGcConfig {
+    fn default() -> Self {
+        Self {
+            interval_seconds: 60,
+            memory_threshold_percent: 80.0,
+            force_gc_interval_seconds: 300,
+            enable_adaptive_gc: true,
+            max_concurrent_gc: 1,
+            gc_timeout_seconds: 30,
+            enable_incremental_gc: true,
+        }
+    }
+}
+
+impl Default for MemoryMonitoringConfig {
+    fn default() -> Self {
+        Self {
+            collection_interval_seconds: 30,
+            enable_leak_detection: true,
+            leak_detection_threshold_seconds: 300,
+            enable_memory_profiling: true,
+            enable_real_time_events: true,
+            history_retention_seconds: 3600,
+        }
+    }
+}
+
+impl Default for MemoryBufferConfig {
+    fn default() -> Self {
+        Self {
+            tiny_pool_size: 10000,      // 64B-256B buffers
+            small_pool_size: 5000,      // 256B-1KB buffers
+            medium_pool_size: 2000,     // 1KB-4KB buffers
+            large_pool_size: 1000,      // 4KB-16KB buffers
+            xlarge_pool_size: 500,      // 16KB-64KB buffers
+            xxlarge_pool_size: 100,     // 64KB-256KB buffers
+            jumbo_pool_size: 50,         // 256KB-1MB buffers
+            enable_compression: false,
+            enable_zero_copy: true,
+            max_buffer_age_seconds: 300,
+            cleanup_interval_seconds: 60,
         }
     }
 }

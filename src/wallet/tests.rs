@@ -67,7 +67,7 @@ mod turnkey_tests {
 
     #[tokio::test]
     async fn test_turnkey_provider_creation() {
-        let provider = crate::wallet::turnkey::TurnkeyProvider::new();
+        let _provider = crate::wallet::turnkey::TurnkeyProvider::new();
         // Test that provider can be created successfully
         assert!(true);
     }
@@ -218,7 +218,7 @@ mod solflare_tests {
             enable_web_support: true,
         };
         
-        let provider = SolflareProvider::with_config(config);
+        let _provider = SolflareProvider::with_config(config);
         assert!(true);
     }
 }

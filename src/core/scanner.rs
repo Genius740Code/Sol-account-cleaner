@@ -1,5 +1,5 @@
 use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
-use crate::core::parallel_processor::{IntelligentParallelProcessor, Priority};
+use crate::core::parallel_processor::IntelligentParallelProcessor;
 use crate::rpc::{ConnectionPoolTrait};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
