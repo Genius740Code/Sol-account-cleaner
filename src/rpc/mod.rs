@@ -8,6 +8,7 @@ pub trait ConnectionPoolTrait: Send + Sync {
 
 pub mod pool;
 pub mod client;
+pub mod enhanced_pool;
 
 #[cfg(test)]
 mod client_tests;
@@ -16,3 +17,4 @@ mod tests;
 
 pub use pool::*;
 pub use client::*;
+pub use enhanced_pool::*;

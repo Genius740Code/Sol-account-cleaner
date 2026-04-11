@@ -18,11 +18,28 @@ impl From<crate::config::CacheConfig> for crate::storage::CacheConfig {
             ttl_seconds: config.ttl_seconds,
             max_size: config.max_size,
             cleanup_interval_seconds: config.cleanup_interval_seconds,
-            enable_hierarchical_cache: true,
-            l1_cache_size: 1000,
-            l2_cache_size: 5000,
-            compression_threshold: 1024,
-            enable_metrics: true,
+            enable_hierarchical_cache: config.enable_hierarchical_cache,
+            l1_cache_size: config.l1_max_size,
+            l2_cache_size: config.l2_max_size,
+            compression_threshold: config.compression_threshold,
+            enable_metrics: config.enable_metrics,
+        }
+    }
+}
+
+impl From<crate::config::CacheConfig> for crate::storage::HierarchicalCacheConfig {
+    fn from(config: crate::config::CacheConfig) -> Self {
+        crate::storage::HierarchicalCacheConfig {
+            l1_ttl_seconds: config.l1_ttl_seconds,
+            l1_max_size: config.l1_max_size,
+            l2_ttl_seconds: config.l2_ttl_seconds,
+            l2_max_size: config.l2_max_size,
+            l3_ttl_seconds: config.l3_ttl_seconds,
+            enable_compression: config.enable_compression,
+            compression_threshold: config.compression_threshold,
+            enable_cache_warming: config.enable_cache_warming,
+            enable_metrics: config.enable_metrics,
+            redis_url: std::env::var("REDIS_URL").ok(),
         }
     }
 }
@@ -75,6 +92,16 @@ pub struct CacheConfig {
     pub ttl_seconds: u64,
     pub max_size: usize,
     pub cleanup_interval_seconds: u64,
+    pub enable_hierarchical_cache: bool,
+    pub l1_ttl_seconds: u64,
+    pub l1_max_size: usize,
+    pub l2_ttl_seconds: u64,
+    pub l2_max_size: usize,
+    pub l3_ttl_seconds: u64,
+    pub enable_compression: bool,
+    pub compression_threshold: usize,
+    pub enable_cache_warming: bool,
+    pub enable_metrics: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,6 +179,16 @@ impl Default for CacheConfig {
             ttl_seconds: 300,
             max_size: 10000,
             cleanup_interval_seconds: 60,
+            enable_hierarchical_cache: true,
+            l1_ttl_seconds: 60,
+            l1_max_size: 100000,
+            l2_ttl_seconds: 900,
+            l2_max_size: 1000000,
+            l3_ttl_seconds: 3600,
+            enable_compression: true,
+            compression_threshold: 1024,
+            enable_cache_warming: true,
+            enable_metrics: true,
         }
     }
 }

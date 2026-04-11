@@ -415,6 +415,17 @@ impl CacheManager {
         self.metrics.read().clone()
     }
     
+    pub async fn cleanup_expired(&self) -> Result<u64> {
+        if self.config.enable_hierarchical_cache {
+            let initial_size = self.l2_cache.len();
+            Self::cleanup_expired_l2(&self.l2_cache, &self.metrics);
+            let cleaned_count = initial_size - self.l2_cache.len();
+            Ok(cleaned_count as u64)
+        } else {
+            Ok(0)
+        }
+    }
+
     pub async fn recompress_entries(&self, new_threshold: usize) -> Result<()> {
         // Recompress entries based on new threshold
         if self.config.enable_hierarchical_cache {

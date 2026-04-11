@@ -19,6 +19,16 @@ retry_delay_ms = 1000
 ttl_seconds = 300
 max_size = 10000
 cleanup_interval_seconds = 60
+enable_hierarchical_cache = true
+l1_ttl_seconds = 60
+l1_max_size = 100000
+l2_ttl_seconds = 900
+l2_max_size = 1000000
+l3_ttl_seconds = 3600
+enable_compression = true
+compression_threshold = 1024
+enable_cache_warming = true
+enable_metrics = true
 
 [turnkey]
 api_url = "https://api.turnkey.com"

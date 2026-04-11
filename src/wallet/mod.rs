@@ -8,7 +8,7 @@ pub mod transaction_validator;
 pub mod nonce_manager;
 pub mod audit_logger;
 
-pub use manager::{WalletManager, WalletManagerConfig, WalletCredentials, WalletInfo, WalletConnection, WalletProvider, ConnectionData};
+pub use manager::{WalletManager, WalletManagerConfig, WalletCredentials, WalletInfo, WalletConnection, WalletProvider, ConnectionData, WalletType, WalletCredentialData};
 pub use private_key::PrivateKeyProvider;
 pub use phantom::PhantomProvider;
 pub use solflare::{SolflareProvider, SolflareConfig};

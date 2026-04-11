@@ -2,8 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use solana_recover::{scan_wallet, recover_sol, WalletInfo, RecoveryRequest};
-use solana_recover::wallet::{WalletManager, WalletCredentials};
-use solana_recover::wallet::manager::{WalletType, WalletCredentialData};
+use solana_recover::wallet::{WalletManager, WalletCredentials, WalletType, WalletCredentialData};
 use solana_sdk::signature::{Signer, SeedDerivable};
 use std::io::{self, Write};
 use std::sync::Arc;
@@ -14,9 +13,14 @@ use zeroize::Zeroize;
 #[command(about = "A high-performance Solana wallet scanner and SOL recovery tool")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
-    /// Wallet address or private key to scan (quick mode)
-    identity: Option<String>,
-
+    /// Single wallet address to scan (quick mode) - mutually exclusive with --private-key
+    #[arg(short, long, conflicts_with = "private_key")]
+    wallet: Option<String>,
+    
+    /// Private key for wallet ownership verification (mutually exclusive with --wallet)
+    #[arg(short, long, conflicts_with = "wallet")]
+    private_key: Option<String>,
+    
     /// Destination wallet for SOL recovery (optional - defaults to your wallet if not specified)
     #[arg(short, long)]
     destination: Option<String>,
@@ -29,14 +33,6 @@ struct Cli {
     #[arg(short = 'D', long, default_value_t = false)]
     dev: bool,
     
-    /// Single wallet address to scan (legacy)
-    #[arg(short, long, hide = true)]
-    wallet: Option<String>,
-    
-    /// Private key for verification (legacy)
-    #[arg(short, long, hide = true)]
-    private_key: Option<String>,
-
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -100,36 +96,13 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Determine the target identity (positional identity has priority, then legacy flags)
-    let raw_identity = cli.identity.or(cli.private_key).or(cli.wallet);
-
-    if let Some(identity) = raw_identity {
-        // Auto-detect if identity is a private key
-        let mut is_private_key = false;
-        let wallet_address = match derive_address_from_private_key(&identity) {
-            Ok(addr) => {
-                is_private_key = true;
-                addr
-            }
-            Err(_) => {
-                // If not a private key, assume it's a wallet address
-                // Basic validation for Solana address (32-44 chars base58)
-                if identity.len() >= 32 && identity.len() <= 44 {
-                    identity.clone()
-                } else {
-                    eprintln!("✗ Error: Invalid identity format. Expected Solana address or private key.");
-                    std::process::exit(1);
-                }
-            }
-        };
-
-        println!("Solana Recover - High Performance Scan");
-        println!("========================================");
-        println!("Target: {}", if is_private_key { "[Private Key Detected]" } else { &wallet_address });
-        if is_private_key && cli.dev {
-            println!("   Address: {}", wallet_address);
-        }
-        println!("Network: {}", "Mainnet (default)");
+    // Handle private key mode (scan + reclaim)
+    if let Some(private_key) = &cli.private_key {
+        // Derive wallet address from private key using the same parsing logic as PrivateKeyProvider
+        let wallet_address = derive_address_from_private_key(private_key)?;
+        
+        println!("Scanning wallet: {}", wallet_address);
+        println!("Using default mainnet endpoint");
         println!();
 
         let start_time = std::time::Instant::now();
@@ -139,10 +112,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
         print_scan_result(&result, cli.dev);
 
-        // Auto-reclaim if SOL is available AND we have a private key
-        if result.recoverable_sol > 0.0 && is_private_key {
+        // Auto-reclaim if SOL is available - no confirmation needed for private key
+        if result.recoverable_sol > 0.0 {
             let destination = cli.destination.as_ref().unwrap_or(&wallet_address);
             
+            println!("✓ Private key validation successful");
             println!();
             println!("Reclaiming SOL to: {}", destination);
 
@@ -153,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let credentials = WalletCredentials {
                 wallet_type: WalletType::PrivateKey,
                 credentials: WalletCredentialData::PrivateKey {
-                    private_key: identity.clone(),
+                    private_key: private_key.clone(),
                 },
             };
             
@@ -177,38 +151,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(recovery_result) => {
                     let elapsed = start_time.elapsed();
                     
+                    // Check the actual recovery status, not just Ok()
                     match recovery_result.status {
                         solana_recover::core::types::RecoveryStatus::Completed => {
-                            println!("✓ Reclamation successful [{}ms]", elapsed.as_millis());
-                            println!("Net Recovered: {:.9} SOL", recovery_result.net_sol);
+                            print!("✓ Reclamation completed in {}ms\n", elapsed.as_millis());
+                            println!("Successfully reclaimed {:.9} SOL!", recovery_result.net_sol);
                         }
                         solana_recover::core::types::RecoveryStatus::Failed => {
-                            println!("✗ Reclamation failed");
-                            println!("   Error: {}", recovery_result.error.unwrap_or_else(|| "Unknown error".to_string()));
+                            print!("✗ Reclamation failed in {}ms\n", elapsed.as_millis());
+                            println!("Error: {}", recovery_result.error.unwrap_or_else(|| "Unknown error".to_string()));
                         }
                         _ => {
-                            println!("⚠ Reclamation incomplete: {:?}", recovery_result.status);
+                            print!("⚠ Reclamation incomplete in {}ms\n", elapsed.as_millis());
+                            println!("⚠ Status: {:?}", recovery_result.status);
                         }
                     }
                 }
                 Err(e) => {
-                    println!("✗ Reclamation failed");
-                    eprintln!("   Detailed error: {:?}", e);
+                    println!("✗ Reclamation failed: {}", e);
+                    eprintln!("Detailed error: {:?}", e);
                 }
             }
-        } else if result.recoverable_sol > 0.0 && !is_private_key {
-            println!();
-            println!("To reclaim this SOL, run the command with your private key.");
         } else {
             println!();
-            println!("Wallet is clean. No recoverable SOL found.");
+            println!("No SOL available to reclaim from this wallet.");
         }
-        
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        return Ok(());
+    }
+    // Handle wallet address mode (scan only)
+    else if let Some(wallet_address) = &cli.wallet {
+        println!("Scanning wallet: {}", wallet_address);
+        println!("Using default mainnet endpoint");
+        println!();
+
+        let start_time = std::time::Instant::now();
+        let result = scan_wallet(wallet_address, None).await?;
+        let elapsed = start_time.elapsed();
+
+        print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
+        print_scan_result(&result, cli.dev);
     }
 
-    // Handle subcommands if no positional identity
+    // Handle subcommands
     match cli.command {
         Some(Commands::Scan { address, rpc_endpoint, dev }) => {
             println!("Scanning wallet: {}", address);
@@ -268,7 +251,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let result = reclaim_sol_from_targets(&targets, &destination, rpc_endpoint.as_deref(), dev).await?;
             let elapsed = start_time.elapsed();
 
-            print!("✓ Reclamation completed in {}ms\n", elapsed.as_millis());
+            print!("✅ Reclamation completed in {}ms\n", elapsed.as_millis());
             print_reclaim_result(&result, dev);
         }
         Some(Commands::Batch { file, dev }) => {
@@ -381,7 +364,7 @@ async fn calculate_total_claimable(
         } else { 
             "[wallet address hidden]".to_string() 
         };
-        print!("Scanning wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
+        print!("🔍 Scanning wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
         io::stdout().flush()?;
         
         let scan_address = if is_private_keys {
@@ -395,10 +378,10 @@ async fn calculate_total_claimable(
             Ok(result) => {
                 total_recoverable += result.recoverable_sol;
                 wallet_results.push((scan_address, result.clone()));
-                println!("✓ {:.9} SOL", result.recoverable_sol);
+                println!("✅ {:.9} SOL", result.recoverable_sol);
             }
             Err(e) => {
-                println!("✗ {}", e);
+                println!("❌ {}", e);
             }
         }
     }
@@ -603,7 +586,7 @@ fn print_total_claim_result(result: &TotalClaimResult, dev: bool) {
     
     if result.total_recoverable_sol > 0.0 {
         println!();
-        println!("Total {:.9} SOL is available for recovery", result.total_recoverable_sol);
+        println!("Total {:.9} SOL is available for recovery!", result.total_recoverable_sol);
     } else {
         println!();
         println!("No SOL available for recovery from any wallets.");
@@ -629,7 +612,7 @@ fn print_reclaim_result(result: &ReclaimResult, dev: bool) {
     
     if result.net_sol > 0.0 {
         println!();
-        println!("Successfully reclaimed {:.9} SOL", result.net_sol);
+        println!("Successfully reclaimed {:.9} SOL!", result.net_sol);
     } else {
         println!();
         println!("No SOL was reclaimed.");
@@ -656,7 +639,7 @@ fn print_scan_result(result: &WalletInfo, dev: bool) {
 
     if result.recoverable_sol > 0.0 {
         println!();
-        println!("This wallet has {:.9} SOL available for recovery", result.recoverable_sol);
+        println!("This wallet has {:.9} SOL available for recovery!", result.recoverable_sol);
     } else {
         println!();
         println!("No SOL available for recovery from this wallet.");
