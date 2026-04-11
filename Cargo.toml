@@ -94,8 +94,8 @@ fastrand           = "2.1"
 
 # Additional dependencies
 tower-http        = { version = "0.6", features = ["cors", "compression-gzip", "trace"] }
-metrics            = "0.23"
-metrics-exporter-prometheus = "0.15"
+metrics            = "0.21"
+metrics-exporter-prometheus = "0.12"
 governor           = "0.6"
 jsonwebtoken       = "9.3"
 lazy_static        = "1.5"
