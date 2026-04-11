@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     match scan_result {
         Ok(Ok(result)) => {
-            println!("✓ Scan completed successfully!");
+            println!("✓ Scan completed successfully");
             println!();
             println!("Results:");
             println!("  Total Accounts: {}", result.total_accounts);

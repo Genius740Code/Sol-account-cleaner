@@ -4,10 +4,9 @@ use solana_sdk::{
     signature::Signature,
     transaction::Transaction,
     hash::Hash,
-    instruction::CompiledInstruction,
 };
 use std::collections::{HashMap, BTreeMap};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -71,7 +70,7 @@ impl NonceManager {
         let mut nonces = self.nonces.write().await;
         nonces.insert(account, nonce_info);
 
-        self.cleanup_expired_nonces().await;
+        let _ = self.cleanup_expired_nonces().await;
 
         Ok(())
     }

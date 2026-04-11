@@ -81,7 +81,7 @@ impl WalletScanner {
         let all_accounts = client.get_all_recoverable_accounts(&pubkey).await?;
         let total_accounts = all_accounts.len();
 
-        info!("🔍 Found {} total accounts for wallet {}", total_accounts, wallet_address);
+        info!("Found {} total accounts for wallet {}", total_accounts, wallet_address);
         for (i, account) in all_accounts.iter().enumerate() {
             debug!("  Account {}: {} (owner: {}, lamports: {})", i + 1, account.pubkey, account.account.owner, account.account.lamports);
         }
@@ -99,7 +99,7 @@ impl WalletScanner {
             }
         }
         
-        debug!("🔍 Found {} unique accounts after deduplication", unique_accounts.len());
+        debug!("Found {} unique accounts after deduplication", unique_accounts.len());
 
         // Parallelize account checking using futures::future::join_all
         let check_futures: Vec<_> = unique_accounts
@@ -112,7 +112,7 @@ impl WalletScanner {
         for result in results {
             match result {
                 Ok(Some(empty_account)) => {
-                    info!("✅ Found empty account: {} ({} lamports)", empty_account.address, empty_account.lamports);
+                    info!("Found empty account: {} ({} lamports)", empty_account.address, empty_account.lamports);
                     total_recoverable_lamports += empty_account.lamports;
                     empty_accounts.push(empty_account);
                 }
@@ -198,7 +198,7 @@ impl WalletScanner {
                                         // Non-zero amount, not empty
                                     }
                                     Err(e) => {
-                                        warn!("Warning: Failed to parse token amount for {}: {}", account_pubkey_str, e);
+                                        warn!("Failed to parse token amount for {}: {}", account_pubkey_str, e);
                                     }
                                 }
                             }
@@ -206,7 +206,7 @@ impl WalletScanner {
                     }
                 }
                 _ => {
-                    warn!("Warning: Unsupported data format for token account: {}", account_pubkey_str);
+                    warn!("Unsupported data format for token account: {}", account_pubkey_str);
                 }
             }
         } 
@@ -271,7 +271,7 @@ impl WalletScanner {
                         }
                     }
                     _ => {
-                        debug!("Warning: OpenBook account {} has non-binary data format", account_pubkey_str);
+                        debug!("OpenBook account {} has non-binary data format", account_pubkey_str);
                     }
                 }
             }

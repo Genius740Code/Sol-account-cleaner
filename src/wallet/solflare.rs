@@ -1,6 +1,4 @@
 use crate::core::{Result, SolanaRecoverError};
-use crate::wallet::{WalletProvider, WalletCredentials, WalletConnection, ConnectionData};
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,8 +7,11 @@ use uuid::Uuid;
 use base64::{Engine as _, engine::general_purpose};
 
 pub struct SolflareProvider {
+    #[allow(dead_code)]
     connections: Arc<RwLock<HashMap<String, SolflareSession>>>,
+    #[allow(dead_code)]
     message_handlers: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<SolflareMessage>>>>,
+    #[allow(dead_code)]
     config: SolflareConfig,
 }
 
@@ -84,6 +85,7 @@ impl SolflareProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn send_solflare_request(&self, _session_id: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
         let message = SolflareMessage {
             id: Uuid::new_v4().to_string(),
@@ -155,6 +157,7 @@ impl SolflareProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn validate_solflare_available(&self) -> Result<(SolflareWalletType, String)> {
         // In a real implementation, this would check for different Solflare clients
         // 1. Browser extension (window.solflare)
@@ -189,6 +192,7 @@ impl SolflareProvider {
         ))
     }
 
+    #[allow(dead_code)]
     async fn request_permissions(&self, wallet_type: &SolflareWalletType) -> Result<()> {
         // In a real implementation, this would trigger the appropriate permission request
         match wallet_type {
@@ -207,6 +211,7 @@ impl SolflareProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn create_deep_link(&self, public_key: &str) -> Result<String> {
         // Create Solflare mobile deep link
         Ok(format!(

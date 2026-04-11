@@ -5,7 +5,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{SystemTime, Duration};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
@@ -343,7 +343,7 @@ impl AuditLogger {
         }
 
         // Check if we need to flush
-        self.check_and_flush().await;
+        let _ = self.check_and_flush().await;
 
         // Send alerts for high-risk events
         if event.details.risk_level >= self.config.min_risk_level_for_alert {

@@ -8,10 +8,7 @@ use solana_sdk::{
     system_instruction,
     signature::Signature,
     commitment_config::CommitmentConfig,
-    signature::Keypair,
-    signer::Signer,
 };
-use spl_token::instruction::close_account;
 use std::sync::Arc;
 use tracing::{info, error, warn};
 use sha2::{Sha256};
@@ -168,7 +165,7 @@ impl RecoveryManager {
         self.validate_batch_security(accounts, destination_pubkey).await?;
         
         // Create audit entry for this batch
-        let audit_entry = self.create_audit_entry(request).await?;
+        let _audit_entry = self.create_audit_entry(request).await?;
         
         let mut transaction = RecoveryTransaction {
             id: uuid::Uuid::new_v4(),
@@ -344,7 +341,7 @@ impl RecoveryManager {
                         // This is a token account - use close_account instruction
                         // CRITICAL FIX: Manually build the instruction to avoid program ID mismatch checks in the SPL crate.
                         // The CloseAccount instruction has tag 9 and expects: [account, destination, authority]
-                        let mut data = vec![9]; 
+                        let data = vec![9]; 
                         let accounts = vec![
                             solana_sdk::instruction::AccountMeta::new(*account_pubkey, false),
                             solana_sdk::instruction::AccountMeta::new(destination, false),

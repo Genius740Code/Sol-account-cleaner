@@ -1,9 +1,15 @@
 [package]
 name = "solana-recover"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "A comprehensive Solana wallet recovery and account management tool"
 license = "MIT"
+documentation = "https://docs.rs/solana-recover"
+homepage = "https://github.com/Genius740Code/solana-recover"
+repository = "https://github.com/Genius740Code/solana-recover"
+readme = "README.md"
+keywords = ["solana", "blockchain", "wallet", "recovery", "crypto"]
+categories = ["cryptography::cryptocurrencies", "command-line-utilities"]
 
 [features]
 default = ["scanner", "recovery"]
@@ -28,22 +34,22 @@ spl-token          = { version = "4.0", features = ["no-entrypoint"] }
 spl-token-2022     = { version = "0.9", features = ["no-entrypoint"] }
 
 # Async runtime
-tokio              = { version = "1.0", features = ["full"] }
+tokio              = { version = "1.40", features = ["full"] }
 tokio-util         = { version = "0.7", features = ["codec"] }
 tokio-test         = "0.4"
 async-trait        = "0.1"
 futures            = "0.3"
 
 # Web / API
-axum               = "0.7"
-tower              = "0.4"
-reqwest            = { version = "0.11", features = ["json"] }
+axum               = "0.8"
+tower              = "0.5"
+reqwest            = { version = "0.12", features = ["json"] }
 
 # Serialization
 serde              = { version = "1.0", features = ["derive"] }
 serde_json         = "1.0"
 toml               = "0.8"
-prost              = "0.12"
+prost              = "0.13"
 bincode            = "1.3"
 
 # Logging / tracing
@@ -51,7 +57,7 @@ tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 
 # CLI / Config
-clap               = { version = "4.0", features = ["derive"] }
+clap               = { version = "4.5", features = ["derive"] }
 config             = "0.14"
 
 # Error handling
@@ -59,7 +65,7 @@ anyhow             = "1.0"
 thiserror          = "1.0"
 
 # Database
-rusqlite           = { version = "0.31", features = ["bundled", "chrono", "uuid"] }
+rusqlite           = { version = "0.32", features = ["bundled", "chrono", "uuid"] }
 
 # Security — zeroize pinned to <1.4 to satisfy curve25519-dalek via solana-program
 zeroize            = "1.3"
@@ -68,31 +74,31 @@ hmac               = "0.12"
 rand               = "0.8"
 
 # Concurrency / performance
-rayon              = "1.8"
-dashmap            = "5.5"
+rayon              = "1.10"
+dashmap            = "6.0"
 parking_lot        = "0.12"
 crossbeam          = "0.8"
 flume              = "0.11"
 moka               = { version = "0.12", features = ["future"] }
 lru                = "0.12"
-smallvec           = { version = "1.11", features = ["serde"] }
+smallvec           = { version = "1.13", features = ["serde"] }
 
 # Utilities
-uuid               = { version = "1.0", features = ["v4", "serde"] }
+uuid               = { version = "1.11", features = ["v4", "serde"] }
 chrono             = { version = "0.4", features = ["serde"] }
 hex                = "0.4"
 bs58               = "0.5"
-bytes              = "1.5"
+bytes              = "1.7"
 once_cell          = "1.19"
-fastrand           = "2.0"
+fastrand           = "2.1"
 
 # Additional dependencies
-tower-http        = { version = "0.5", features = ["cors", "compression-gzip", "trace"] }
-metrics            = "0.21"
-metrics-exporter-prometheus = "0.12"
+tower-http        = { version = "0.6", features = ["cors", "compression-gzip", "trace"] }
+metrics            = "0.23"
+metrics-exporter-prometheus = "0.13"
 governor           = "0.6"
-jsonwebtoken       = "9.0"
-lazy_static        = "1.4"
-redis              = { version = "0.25", features = ["tokio-comp"] }
+jsonwebtoken       = "9.3"
+lazy_static        = "1.5"
+redis              = { version = "0.26", features = ["tokio-comp"] }
 base64 = "0.22.1"
 urlencoding = "2.1"

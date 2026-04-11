@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use solana_sdk::{
     signature::{Keypair, Signer, SeedDerivable},
     transaction::Transaction,
-    pubkey::Pubkey,
 };
 use zeroize::Zeroize;
 use std::sync::Arc;
@@ -390,7 +389,7 @@ mod tests {
         let parse_result = provider.parse_private_key(test_private_key);
         
         if let Ok(keypair) = parse_result {
-            println!("Successfully parsed private key!");
+            println!("Successfully parsed private key");
             println!("Public key: {}", keypair.pubkey());
             
             // Test wallet connection
@@ -404,7 +403,7 @@ mod tests {
             
             let connection_result = provider.connect(&credentials).await;
             if let Ok(connection) = connection_result {
-                println!("Successfully connected to wallet!");
+                println!("Successfully connected to wallet");
                 println!("Connection ID: {}", connection.id);
                 
                 // Test getting public key

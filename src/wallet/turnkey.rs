@@ -34,6 +34,7 @@ pub struct TurnkeyProvider {
 #[derive(Debug, Clone)]
 struct TurnkeySession {
     session_token: String,
+    #[allow(dead_code)]
     public_key: String,
     expires_at: chrono::DateTime<chrono::Utc>,
 }

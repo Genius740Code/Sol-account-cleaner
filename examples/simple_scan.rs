@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = scan_wallet(wallet_address, rpc_endpoint).await?;
     let elapsed = start_time.elapsed();
     
-    println!("🔍 Scan Results:");
+    println!("Scan Results:");
     println!("  Wallet Address: {}", result.wallet_address);
     println!("  Total Accounts: {}", result.total_accounts);
     println!("  Empty Accounts: {}", result.empty_accounts.len());
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     if !result.empty_accounts.is_empty() {
         println!();
-        println!("📋 Empty Account Addresses:");
+        println!("Empty Account Addresses:");
         for (i, account) in result.empty_accounts.iter().enumerate() {
             println!("  {}. {} ({} lamports)", i + 1, account.address, account.lamports);
         }
@@ -52,10 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     if result.recoverable_sol > 0.0 {
         println!();
-        println!("💰 This wallet has {:.9} SOL available for recovery!", result.recoverable_sol);
+        println!("This wallet has {:.9} SOL available for recovery", result.recoverable_sol);
     } else {
         println!();
-        println!("💸 No SOL available for recovery from this wallet.");
+        println!("No SOL available for recovery from this wallet.");
     }
     
     Ok(())

@@ -1,6 +1,4 @@
 use crate::core::{Result, SolanaRecoverError};
-use crate::wallet::{WalletProvider, WalletCredentials, WalletConnection, ConnectionData};
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,7 +7,9 @@ use uuid::Uuid;
 use base64::{Engine as _, engine::general_purpose};
 
 pub struct PhantomProvider {
+    #[allow(dead_code)]
     connections: Arc<RwLock<HashMap<String, PhantomSession>>>,
+    #[allow(dead_code)]
     message_handlers: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<PhantomMessage>>>>,
 }
 
@@ -51,6 +51,7 @@ impl PhantomProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn send_phantom_request(&self, _session_id: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
         let message = PhantomMessage {
             id: Uuid::new_v4().to_string(),
@@ -122,6 +123,7 @@ impl PhantomProvider {
         }
     }
 
+    #[allow(dead_code)]
     async fn validate_phantom_available(&self) -> Result<()> {
         // In a real implementation, this would check if Phantom extension is available
         // For now, we'll simulate the check
@@ -138,6 +140,7 @@ impl PhantomProvider {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn request_permissions(&self) -> Result<()> {
         // In a real implementation, this would trigger the Phantom popup
         // requesting user permission to connect
