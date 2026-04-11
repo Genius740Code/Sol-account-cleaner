@@ -1,4 +1,5 @@
 use crate::core::{Result, SolanaRecoverError};
+use crate::storage::{HierarchicalCache, HierarchicalCacheConfig, CachedWalletInfo};
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_client::rpc_filter::{RpcFilterType, Memcmp, MemcmpEncodedBytes};
@@ -9,12 +10,14 @@ use std::time::{Duration, Instant};
 use moka::future::Cache;
 use base64::Engine;
 use std::str::FromStr;
+use tracing::{debug, info, warn};
 
 pub struct RpcClientWrapper {
     client: Arc<RpcClient>,
     rate_limiter: Arc<dyn RateLimiter>,
     request_timeout: Duration,
     rent_cache: Cache<usize, u64>, // Cache for rent exemption queries
+    hierarchical_cache: Option<Arc<HierarchicalCache>>, // Enhanced multi-tier cache
 }
 
 impl std::fmt::Debug for RpcClientWrapper {
@@ -37,6 +40,7 @@ impl RpcClientWrapper {
             rate_limiter,
             request_timeout: Duration::from_secs(30),
             rent_cache,
+            hierarchical_cache: None,
         }
     }
     
@@ -57,19 +61,50 @@ impl RpcClientWrapper {
             rate_limiter,
             request_timeout: Duration::from_millis(timeout_ms),
             rent_cache,
+            hierarchical_cache: None,
         })
     }
     
     pub fn from_url(url: &str, timeout_ms: u64) -> Result<Self> {
         Self::new_with_url(url, timeout_ms)
     }
+    
+    pub async fn with_hierarchical_cache(mut self, cache_config: HierarchicalCacheConfig) -> Result<Self> {
+        let cache = HierarchicalCache::new(cache_config).await?;
+        self.hierarchical_cache = Some(Arc::new(cache));
+        Ok(self)
+    }
+    
+    pub fn set_hierarchical_cache(&mut self, cache: Arc<HierarchicalCache>) {
+        self.hierarchical_cache = Some(cache);
+    }
 
     pub async fn get_all_recoverable_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+        let cache_key = format!("recoverable_accounts:{}", pubkey);
+        
+        // Try hierarchical cache first
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key).await {
+                debug!("Cache hit for recoverable accounts of {}", pubkey);
+                return Ok(cached_accounts);
+            }
+        }
+        
+        // Cache miss - fetch from RPC
         let mut all_accounts = self.get_token_accounts(pubkey).await?;
         
         // Add OpenBook accounts
         let openbook_accounts = self.get_openbook_accounts(pubkey).await?;
         all_accounts.extend(openbook_accounts);
+        
+        // Cache the result
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Err(e) = cache.set(&cache_key, &all_accounts).await {
+                warn!("Failed to cache recoverable accounts for {}: {}", pubkey, e);
+            } else {
+                debug!("Cached recoverable accounts for {}", pubkey);
+            }
+        }
         
         Ok(all_accounts)
     }
@@ -195,6 +230,16 @@ impl RpcClientWrapper {
     }
 
     pub async fn get_token_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+        let cache_key = format!("token_accounts:{}", pubkey);
+        
+        // Try hierarchical cache first
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key).await {
+                debug!("Cache hit for token accounts of {}", pubkey);
+                return Ok(cached_accounts);
+            }
+        }
+        
         self.rate_limiter.acquire().await?;
         
         let token_program_id = spl_token::id();
@@ -235,23 +280,53 @@ impl RpcClientWrapper {
         let mut all_accounts = standard_accounts;
         all_accounts.extend(token_2022_accounts);
         
+        // Cache the result
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Err(e) = cache.set(&cache_key, &all_accounts).await {
+                warn!("Failed to cache token accounts for {}: {}", pubkey, e);
+            } else {
+                debug!("Cached token accounts for {}", pubkey);
+            }
+        }
+        
         Ok(all_accounts)
     }
 
     pub async fn get_balance(&self, pubkey: &Pubkey) -> Result<u64> {
+        let cache_key = format!("balance:{}", pubkey);
+        
+        // Try hierarchical cache first (with shorter TTL for balance)
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Ok(Some(cached_balance)) = cache.get::<u64>(&cache_key).await {
+                debug!("Cache hit for balance of {}", pubkey);
+                return Ok(cached_balance);
+            }
+        }
+        
         self.rate_limiter.acquire().await?;
         
         let client = self.client.clone();
         let pubkey = *pubkey;
         let timeout = self.request_timeout;
         
-        Ok(tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+        let balance = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
             client.get_balance_with_commitment(&pubkey, CommitmentConfig::confirmed())
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
         .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
-        .value)
+        .value;
+        
+        // Cache the result
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Err(e) = cache.set(&cache_key, &balance).await {
+                warn!("Failed to cache balance for {}: {}", pubkey, e);
+            } else {
+                debug!("Cached balance for {}", pubkey);
+            }
+        }
+        
+        Ok(balance)
     }
     
     pub async fn get_health(&self) -> Result<()> {
@@ -268,13 +343,23 @@ impl RpcClientWrapper {
     }
     
     pub async fn get_account_info(&self, pubkey: &Pubkey) -> Result<solana_account_decoder::UiAccount> {
+        let cache_key = format!("account_info:{}", pubkey);
+        
+        // Try hierarchical cache first
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Ok(Some(cached_account)) = cache.get::<solana_account_decoder::UiAccount>(&cache_key).await {
+                debug!("Cache hit for account info of {}", pubkey);
+                return Ok(cached_account);
+            }
+        }
+        
         self.rate_limiter.acquire().await?;
         
         let client = self.client.clone();
         let pubkey = *pubkey;
         let timeout = self.request_timeout;
         
-        tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
+        let account = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
             client.get_account_with_commitment(&pubkey, CommitmentConfig::confirmed())
         })).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
@@ -295,7 +380,18 @@ impl RpcClientWrapper {
                 rent_epoch: account.rent_epoch,
                 space: Some(account.data.len() as u64),
             }
-        })
+        })?;
+        
+        // Cache the result
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Err(e) = cache.set(&cache_key, &account).await {
+                warn!("Failed to cache account info for {}: {}", pubkey, e);
+            } else {
+                debug!("Cached account info for {}", pubkey);
+            }
+        }
+        
+        Ok(account)
     }
     
     pub async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> Result<Vec<Option<solana_account_decoder::UiAccount>>> {

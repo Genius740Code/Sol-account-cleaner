@@ -3,6 +3,7 @@ use solana_sdk::{
     pubkey::Pubkey,
     signature::Signature,
     transaction::Transaction,
+    hash::Hash,
 };
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, Duration};

@@ -160,41 +160,42 @@ impl BatchProcessor {
                 .flatten()
                 .collect();
 
-        let completed_wallets = results.iter()
-            .filter(|r| r.status == ScanStatus::Completed)
-            .count();
+            let completed_wallets = results.iter()
+                .filter(|r| r.status == ScanStatus::Completed)
+                .count();
 
-        let failed_wallets = results.iter()
-            .filter(|r| r.status == ScanStatus::Failed)
-            .count();
+            let failed_wallets = results.iter()
+                .filter(|r| r.status == ScanStatus::Failed)
+                .count();
 
-        let total_recoverable_sol: f64 = results.iter()
-            .filter_map(|r| r.result.as_ref())
-            .map(|w| w.recoverable_sol)
-            .sum();
+            let total_recoverable_sol: f64 = results.iter()
+                .filter_map(|r| r.result.as_ref())
+                .map(|w| w.recoverable_sol)
+                .sum();
 
-        let fee_structure = request.fee_percentage
-            .map(|p| FeeStructure { percentage: p, ..Default::default() })
-            .unwrap_or_default();
+            let fee_structure = request.fee_percentage
+                .map(|p| FeeStructure { percentage: p, ..Default::default() })
+                .unwrap_or_default();
 
-        let estimated_fee_sol = self.calculate_fee(total_recoverable_sol, &fee_structure);
-        let duration_ms = start_time.elapsed().as_millis() as u64;
+            let estimated_fee_sol = self.calculate_fee(total_recoverable_sol, &fee_structure);
+            let duration_ms = start_time.elapsed().as_millis() as u64;
 
-        return Ok(BatchScanResult {
-            id: request.id,
-            batch_id: Some(request.id.to_string()),
-            total_wallets: request.wallet_addresses.len(),
-            successful_scans: completed_wallets,
-            failed_scans: failed_wallets,
-            completed_wallets,
-            failed_wallets,
-            total_recoverable_sol,
-            estimated_fee_sol,
-            results,
-            created_at: request.created_at,
-            completed_at: Some(Utc::now()),
-            duration_ms: Some(duration_ms),
-        })
+            return Ok(BatchScanResult {
+                id: request.id,
+                batch_id: Some(request.id.to_string()),
+                total_wallets: request.wallet_addresses.len(),
+                successful_scans: completed_wallets,
+                failed_scans: failed_wallets,
+                completed_wallets,
+                failed_wallets,
+                total_recoverable_sol,
+                estimated_fee_sol,
+                results,
+                created_at: request.created_at,
+                completed_at: Some(Utc::now()),
+                duration_ms: Some(duration_ms),
+            });
+        }
     }
 
     pub async fn process_batch_streaming(&self, request: &BatchScanRequest) -> Result<tokio::sync::mpsc::UnboundedReceiver<ScanResult>> {
@@ -245,70 +246,9 @@ impl BatchProcessor {
             }
             
             drop(tx); // Close the channel
-                        let mut chunk_results = Vec::with_capacity(chunk.len());
-                        
-                        for wallet_address in chunk {
-                            match scanner.scan_wallet(wallet_address).await {
-                                Ok(result) => chunk_results.push(result),
-                                Err(e) => chunk_results.push(ScanResult {
-                                    id: Uuid::new_v4(),
-                                    wallet_address: wallet_address.clone(),
-                                    status: ScanStatus::Failed,
-                                    result: None,
-                                    error: Some(e.to_string()),
-                                    created_at: Utc::now(),
-                                }),
-                            }
-                            
-                            let current = processed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            if let Some(ref callback) = progress_callback {
-                                callback(current, total_wallets);
-                            }
-                        }
-                        
-                        chunk_results
-                    })
-                })
-                .flatten()
-                .collect()
-        };
+        });
         
-        // Continue with existing result processing logic...
-        let completed_wallets = results.iter()
-            .filter(|r| r.status == ScanStatus::Completed)
-            .count();
-
-        let failed_wallets = results.iter()
-            .filter(|r| r.status == ScanStatus::Failed)
-            .count();
-
-        let total_recoverable_sol: f64 = results.iter()
-            .filter_map(|r| r.result.as_ref())
-            .map(|w| w.recoverable_sol)
-            .sum();
-
-        let fee_structure = request.fee_percentage
-            .map(|p| FeeStructure { percentage: p, ..Default::default() })
-            .unwrap_or_default();
-
-        let estimated_fee_sol = self.calculate_fee(total_recoverable_sol, &fee_structure);
-        let duration_ms = start_time.elapsed().as_millis() as u64;
-
-        return Ok(BatchScanResult {
-            id: request.id,
-            batch_id: Some(request.id.to_string()),
-            total_wallets: request.wallet_addresses.len(),
-            successful_scans: completed_wallets,
-            failed_scans: failed_wallets,
-            completed_wallets,
-            failed_wallets,
-            total_recoverable_sol,
-            estimated_fee_sol,
-            results,
-            created_at: request.created_at,
-            completed_at: Some(Utc::now()),
-            duration_ms: Some(duration_ms),
-        })
+        Ok(rx)
     }
 }
 

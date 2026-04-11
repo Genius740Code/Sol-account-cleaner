@@ -1,4 +1,5 @@
-use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount};
+use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
+use crate::core::parallel_processor::{IntelligentParallelProcessor, Priority};
 use crate::rpc::{ConnectionPoolTrait};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
@@ -32,11 +33,113 @@ const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 #[derive(Clone)]
 pub struct WalletScanner {
     connection_pool: Arc<dyn ConnectionPoolTrait>,
+    parallel_processor: Option<Arc<IntelligentParallelProcessor>>,
 }
 
 impl WalletScanner {
     pub fn new(connection_pool: Arc<dyn ConnectionPoolTrait>) -> Self {
-        Self { connection_pool }
+        Self { 
+            connection_pool,
+            parallel_processor: None,
+        }
+    }
+
+    pub fn new_with_parallel_processing(
+        connection_pool: Arc<dyn ConnectionPoolTrait>,
+        max_workers: Option<usize>,
+        max_concurrent_tasks: usize,
+    ) -> Result<Self> {
+        let scanner = Self { 
+            connection_pool: connection_pool.clone(),
+            parallel_processor: None,
+        };
+        
+        let parallel_processor = Arc::new(IntelligentParallelProcessor::new(
+            Arc::new(scanner.clone()),
+            max_workers,
+            max_concurrent_tasks,
+        )?);
+        
+        Ok(Self {
+            connection_pool,
+            parallel_processor: Some(parallel_processor),
+        })
+    }
+
+    pub async fn scan_batch_parallel(&mut self, request: &BatchScanRequest) -> Result<BatchScanResult> {
+        match &mut self.parallel_processor {
+            Some(processor) => {
+                // Create a new processor for this batch since we can't modify the Arc
+                let mut temp_processor = IntelligentParallelProcessor::new(
+                    processor.scanner.clone(),
+                    Some(processor.max_workers),
+                    processor.semaphore.available_permits(),
+                )?;
+                temp_processor.process_batch_intelligently(request).await
+            }
+            None => {
+                // Fallback to sequential processing if parallel processor not initialized
+                self.scan_batch_sequential(request).await
+            }
+        }
+    }
+
+    async fn scan_batch_sequential(&self, request: &BatchScanRequest) -> Result<BatchScanResult> {
+        let start_time = Instant::now();
+        let mut results = Vec::new();
+        let mut successful_scans = 0;
+        let mut failed_scans = 0;
+        let mut total_recoverable_sol = 0.0;
+
+        for wallet_address in &request.wallet_addresses {
+            match self.scan_wallet(wallet_address).await {
+                Ok(scan_result) => {
+                    if scan_result.status == ScanStatus::Completed {
+                        successful_scans += 1;
+                        if let Some(wallet_info) = &scan_result.result {
+                            total_recoverable_sol += wallet_info.recoverable_sol;
+                        }
+                    } else {
+                        failed_scans += 1;
+                    }
+                    results.push(scan_result);
+                }
+                Err(e) => {
+                    failed_scans += 1;
+                    results.push(ScanResult {
+                        id: Uuid::new_v4(),
+                        wallet_address: wallet_address.clone(),
+                        status: ScanStatus::Failed,
+                        result: None,
+                        error: Some(e.to_string()),
+                        created_at: Utc::now(),
+                    });
+                }
+            }
+        }
+
+        let fee_structure = request.fee_percentage
+            .map(|p| crate::core::FeeStructure { percentage: p, ..Default::default() })
+            .unwrap_or_default();
+        
+        let estimated_fee_sol = total_recoverable_sol * fee_structure.percentage;
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+
+        Ok(BatchScanResult {
+            id: request.id,
+            batch_id: Some(request.id.to_string()),
+            total_wallets: request.wallet_addresses.len(),
+            successful_scans,
+            failed_scans,
+            completed_wallets: successful_scans,
+            failed_wallets: failed_scans,
+            total_recoverable_sol,
+            estimated_fee_sol,
+            results,
+            created_at: request.created_at,
+            completed_at: Some(Utc::now()),
+            duration_ms: Some(duration_ms),
+        })
     }
 
     pub async fn scan_wallet(&self, wallet_address: &str) -> Result<ScanResult> {

@@ -29,7 +29,7 @@ pub struct WalletTask {
     pub dependencies: Vec<u64>,
     pub retry_count: u32,
     pub estimated_complexity: f64,
-    pub created_at: Instant,
+    pub created_at: std::time::SystemTime,
 }
 
 impl WalletTask {
@@ -41,49 +41,92 @@ impl WalletTask {
             dependencies: Vec::new(),
             retry_count: 0,
             estimated_complexity: 1.0,
-            created_at: Instant::now(),
+            created_at: std::time::SystemTime::now(),
         }
     }
 }
 
-/// Simple task queue for parallel processing (Send/Sync compatible)
-pub struct TaskQueue<T> {
-    tasks: Arc<std::sync::Mutex<Vec<T>>>,
-    next_index: AtomicUsize,
+/// Simple work-stealing queue using standard library primitives
+pub struct WorkStealingQueue<T: Send> {
+    global_queue: Arc<SegQueue<T>>,
+    worker_queues: Arc<Vec<Arc<SegQueue<T>>>>,
+    num_workers: usize,
 }
 
-impl<T: Send + Sync + Clone> TaskQueue<T> {
-    pub fn new() -> Self {
-        Self {
-            tasks: Arc::new(std::sync::Mutex::new(Vec::new())),
-            next_index: AtomicUsize::new(0),
+impl<T: Send> WorkStealingQueue<T> {
+    pub fn new(num_workers: usize) -> Self {
+        let mut worker_queues = Vec::with_capacity(num_workers);
+        for _ in 0..num_workers {
+            worker_queues.push(Arc::new(SegQueue::new()));
         }
-    }
-    
-    pub fn push(&self, item: T) {
-        let mut tasks = self.tasks.lock().unwrap();
-        tasks.push(item);
-    }
-    
-    pub fn pop(&self) -> Option<T> {
-        let index = self.next_index.fetch_add(1, Ordering::Relaxed);
-        let tasks = self.tasks.lock().unwrap();
         
-        if index < tasks.len() {
-            Some(tasks[index].clone())
-        } else {
-            None
+        Self {
+            global_queue: Arc::new(SegQueue::new()),
+            worker_queues: Arc::new(worker_queues),
+            num_workers,
         }
     }
     
-    pub fn len(&self) -> usize {
-        self.tasks.lock().unwrap().len()
+    /// Push a task to the global queue
+    pub fn push(&self, task: T) {
+        self.global_queue.push(task);
     }
-}
-
-impl<T: Send + Sync + Clone> Default for TaskQueue<T> {
-    fn default() -> Self {
-        Self::new()
+    
+    /// Push a task to a specific worker's local queue
+    pub fn push_local(&self, worker_id: usize, task: T) {
+        if worker_id < self.worker_queues.len() {
+            self.worker_queues[worker_id].push(task);
+        } else {
+            self.global_queue.push(task);
+        }
+    }
+    
+    /// Get next task for a worker (local first, then global, then steal)
+    pub fn get_task(&self, worker_id: usize) -> Option<T> {
+        // Try local queue first
+        if worker_id < self.worker_queues.len() {
+            if let Some(task) = self.worker_queues[worker_id].pop() {
+                return Some(task);
+            }
+        }
+        
+        // Try global queue
+        if let Some(task) = self.global_queue.pop() {
+            return Some(task);
+        }
+        
+        // Try to steal from other workers
+        for (i, queue) in self.worker_queues.iter().enumerate() {
+            if i != worker_id {
+                if let Some(task) = queue.pop() {
+                    return Some(task);
+                }
+            }
+        }
+        
+        None
+    }
+    
+    /// Get the number of workers
+    pub fn num_workers(&self) -> usize {
+        self.num_workers
+    }
+    
+    /// Check if all queues appear to be empty
+    pub fn is_empty(&self) -> bool {
+        // Check global queue
+        if self.global_queue.pop().is_some() {
+            return false;
+        }
+        
+        // Check worker queues
+        for queue in self.worker_queues.iter() {
+            if queue.pop().is_some() {
+                return false;
+            }
+        }
+        
+        true
     }
 }
 
@@ -254,9 +297,9 @@ impl DynamicBatchSizer {
     }
 }
 
-/// Enhanced parallel processor with task queue and dynamic optimization
+/// Enhanced parallel processor with work-stealing queue and dynamic optimization
 pub struct IntelligentParallelProcessor {
-    pub work_queue: Arc<TaskQueue<WalletTask>>,
+    pub work_queue: Arc<WorkStealingQueue<WalletTask>>,
     pub worker_pool: Arc<rayon::ThreadPool>,
     pub progress_tracker: Arc<ProgressTracker>,
     pub resource_monitor: Arc<SystemResourceMonitor>,
@@ -273,7 +316,7 @@ impl IntelligentParallelProcessor {
         max_concurrent_tasks: usize,
     ) -> Result<Self> {
         let num_workers = max_workers.unwrap_or_else(|| rayon::current_num_threads());
-        let work_queue = Arc::new(TaskQueue::new());
+        let work_queue = Arc::new(WorkStealingQueue::new(num_workers));
         
         let worker_pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_workers)
@@ -282,13 +325,14 @@ impl IntelligentParallelProcessor {
             .map_err(|e| crate::core::SolanaRecoverError::InternalError(format!("Failed to create thread pool: {}", e)))?;
         
         let resource_monitor = Arc::new(SystemResourceMonitor::new(crate::core::resource_monitor::MonitorConfig::default()));
+        let resource_monitor_for_sizer: Arc<dyn ResourceMonitor> = resource_monitor.clone();
         
         Ok(Self {
             work_queue,
             worker_pool: Arc::new(worker_pool),
             progress_tracker: Arc::new(ProgressTracker::new(0)),
-            resource_monitor: resource_monitor.clone(),
-            batch_sizer: Arc::new(DynamicBatchSizer::new(100, resource_monitor)),
+            resource_monitor,
+            batch_sizer: Arc::new(DynamicBatchSizer::new(100, resource_monitor_for_sizer)),
             semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
             scanner,
             max_workers: num_workers,
@@ -311,13 +355,15 @@ impl IntelligentParallelProcessor {
         // Update progress tracker
         self.progress_tracker = Arc::new(ProgressTracker::new(tasks.len()));
         
-        // Add tasks to work queue
-        for task in tasks {
-            self.work_queue.push(task);
+        // Distribute tasks across workers using work-stealing
+        for (i, task) in tasks.into_iter().enumerate() {
+            // Distribute tasks round-robin to local queues for better cache locality
+            let worker_id = i % self.max_workers;
+            self.work_queue.push_local(worker_id, task);
         }
         
-        // Process tasks using task queue
-        let results = self.process_tasks_with_task_queue().await?;
+        // Process tasks using work-stealing algorithm
+        let results = self.process_tasks_with_work_stealing().await?;
         
         // Compile results
         let completed_wallets = results.iter()
@@ -357,7 +403,7 @@ impl IntelligentParallelProcessor {
         })
     }
     
-    async fn process_tasks_with_task_queue(&self) -> Result<Vec<ScanResult>> {
+    async fn process_tasks_with_work_stealing(&self) -> Result<Vec<ScanResult>> {
         let progress_tracker = Arc::clone(&self.progress_tracker);
         let resource_monitor = Arc::clone(&self.resource_monitor);
         let semaphore = Arc::clone(&self.semaphore);
@@ -365,52 +411,64 @@ impl IntelligentParallelProcessor {
         let work_queue = Arc::clone(&self.work_queue);
         
         let results_queue = Arc::new(SegQueue::new());
-        let num_tasks = work_queue.len();
+        let num_workers = self.max_workers;
         
-        // Process tasks concurrently using tokio tasks
+        // Spawn worker threads that use work-stealing
         let mut handles = Vec::new();
         
-        for _ in 0..num_tasks {
-            if let Some(task) = work_queue.pop() {
-                let progress_tracker = Arc::clone(&progress_tracker);
-                let _resource_monitor = Arc::clone(&resource_monitor);
-                let semaphore = Arc::clone(&semaphore);
-                let scanner = Arc::clone(&scanner);
-                let results_queue = Arc::clone(&results_queue);
-                
-                let handle = tokio::spawn(async move {
-                    let _permit = semaphore.acquire().await.unwrap();
-                    
-                    let result = match scanner.scan_wallet(&task.wallet_address).await {
-                        Ok(mut scan_result) => {
-                            scan_result.status = ScanStatus::Completed;
-                            progress_tracker.increment_completed();
-                            scan_result
-                        }
-                        Err(e) => {
-                            progress_tracker.increment_failed();
-                            ScanResult {
-                                id: Uuid::new_v4(),
-                                wallet_address: task.wallet_address.clone(),
-                                status: ScanStatus::Failed,
-                                result: None,
-                                error: Some(e.to_string()),
-                                created_at: Utc::now(),
+        for worker_id in 0..num_workers {
+            let progress_tracker = Arc::clone(&progress_tracker);
+            let _resource_monitor = Arc::clone(&resource_monitor);
+            let semaphore = Arc::clone(&semaphore);
+            let scanner = Arc::clone(&scanner);
+            let results_queue = Arc::clone(&results_queue);
+            let work_queue = Arc::clone(&work_queue);
+            
+            let handle = tokio::spawn(async move {
+                // Each worker continuously processes tasks until all are done
+                loop {
+                    // Get task using work-stealing algorithm
+                    if let Some(task) = work_queue.get_task(worker_id) {
+                        let _permit = semaphore.acquire().await.unwrap();
+                        
+                        let result = match scanner.scan_wallet(&task.wallet_address).await {
+                            Ok(mut scan_result) => {
+                                scan_result.status = ScanStatus::Completed;
+                                progress_tracker.increment_completed();
+                                scan_result
                             }
+                            Err(e) => {
+                                progress_tracker.increment_failed();
+                                ScanResult {
+                                    id: Uuid::new_v4(),
+                                    wallet_address: task.wallet_address.clone(),
+                                    status: ScanStatus::Failed,
+                                    result: None,
+                                    error: Some(e.to_string()),
+                                    created_at: Utc::now(),
+                                }
+                            }
+                        };
+                        
+                        results_queue.push(result);
+                    } else {
+                        // No more tasks available, check if all workers are done
+                        if work_queue.is_empty() {
+                            break;
                         }
-                    };
-                    
-                    results_queue.push(result);
-                });
-                
-                handles.push(handle);
-            }
+                        // Brief pause before trying again
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                }
+            });
+            
+            handles.push(handle);
         }
         
-        // Wait for all tasks to complete
+        // Wait for all workers to complete
         for handle in handles {
             handle.await.map_err(|e| {
-                crate::core::SolanaRecoverError::InternalError(format!("Task failed: {:?}", e))
+                crate::core::SolanaRecoverError::InternalError(format!("Worker failed: {:?}", e))
             })?;
         }
         
@@ -474,15 +532,16 @@ mod tests {
     async fn test_work_stealing_queue() {
         let queue: WorkStealingQueue<i32> = WorkStealingQueue::new(4);
         
-        // Push items
+        // Push items to global injector
         for i in 0..10 {
             queue.push(i);
         }
         
-        // Pop items from different workers
+        // Test work-stealing behavior
         let mut items = Vec::new();
         for worker_id in 0..4 {
-            while let Some(item) = queue.pop(worker_id) {
+            // Each worker tries to get tasks
+            while let Some(item) = queue.get_task(worker_id) {
                 items.push(item);
             }
         }
