@@ -22,7 +22,7 @@ pub struct PerformanceTestSuite {
 }
 
 /// Performance test configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceTestConfig {
     /// Number of concurrent wallet scans
     pub concurrent_wallets: usize,

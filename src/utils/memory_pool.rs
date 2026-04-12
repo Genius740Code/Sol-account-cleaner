@@ -134,6 +134,11 @@ impl<T: Default + Clone> std::ops::DerefMut for PooledItem<T> {
 }
 
 impl<T: Default + Clone> PooledItem<T> {
+    pub fn into_inner(mut self) -> T {
+        // Use std::mem::take to avoid Drop conflicts
+        std::mem::take(&mut self.item).unwrap_or_else(|| T::default())
+    }
+    
     /// Create a new pooled item without a pool (for direct allocation)
     pub fn new(item: T) -> Self {
         Self {
@@ -390,7 +395,7 @@ mod tests {
 
     #[test]
     fn test_memory_pool_basic() {
-        let pool = MemoryPool::new(10);
+        let pool: MemoryPool<String> = MemoryPool::new(10);
         
         // Test acquisition and return
         let item = pool.acquire();

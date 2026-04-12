@@ -4,11 +4,15 @@
 //! to scan a single wallet for recoverable SOL.
 
 use solana_recover::*;
+use solana_recover::utils::{Logger, LoggingConfig};
+use solana_recover::config::Config;
+use solana_recover::rpc::ConnectionPool;
+use solana_recover::core::scanner::WalletScanner;
 use std::sync::Arc;
 use tracing::{info, error};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     // Initialize logging
     let logging_config = LoggingConfig {
         level: "info".to_string(),
@@ -18,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         json_fields: vec![],
     };
     
-    Logger::init(logging_config)?;
+    Logger::init(logging_config).map_err(|e| SolanaRecoverError::ConfigError(e.to_string()))?;
     
     info!("Starting basic wallet scan example");
     

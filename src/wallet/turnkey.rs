@@ -9,18 +9,24 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub struct TurnkeyConfig {
     pub api_url: String,
+    pub api_key: Option<String>, // Load from environment
     pub timeout_seconds: u64,
     pub retry_attempts: u32,
     pub enable_session_caching: bool,
+    pub certificate_pinning: bool,
+    pub allowed_origins: Vec<String>,
 }
 
 impl Default for TurnkeyConfig {
     fn default() -> Self {
         Self {
             api_url: "https://api.turnkey.com".to_string(),
+            api_key: std::env::var("TURNKEY_API_KEY").ok(),
             timeout_seconds: 30,
             retry_attempts: 3,
             enable_session_caching: true,
+            certificate_pinning: true,
+            allowed_origins: vec!["https://api.turnkey.com".to_string()],
         }
     }
 }
@@ -45,8 +51,36 @@ impl TurnkeyProvider {
     }
 
     pub fn with_config(config: TurnkeyConfig) -> Self {
-        let client = Client::builder()
+        let mut client_builder = Client::builder()
             .timeout(Duration::from_secs(config.timeout_seconds))
+            .user_agent("solana-recover/1.0.2");
+
+        // Add security headers
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            reqwest::header::HeaderValue::from_static("application/json"),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static("application/json"),
+        );
+        headers.insert(
+            reqwest::header::HeaderName::from_static("x-requested-with"),
+            reqwest::header::HeaderValue::from_static("solana-recover"),
+        );
+        client_builder = client_builder.default_headers(headers);
+
+        // Enable HTTPS only for security
+        client_builder = client_builder.https_only(true);
+
+        // Add dangerous settings for development only
+        #[cfg(debug_assertions)]
+        {
+            client_builder = client_builder.danger_accept_invalid_certs(false);
+        }
+
+        let client = client_builder
             .build()
             .unwrap_or_else(|_| Client::new());
 
@@ -98,30 +132,71 @@ impl TurnkeyProvider {
         }
     }
 
-    /// Validate Turnkey credentials format
+    /// Validate Turnkey credentials format with enhanced security checks
     fn validate_credentials(&self, credentials: &WalletCredentials) -> Result<()> {
         if let WalletCredentialData::Turnkey { api_key, organization_id, private_key_id } = &credentials.credentials {
-            if api_key.is_empty() {
+            // Check API key - allow environment variable override
+            let effective_api_key = if api_key.is_empty() {
+                self.config.api_key.as_ref()
+                    .ok_or_else(|| SolanaRecoverError::AuthenticationError(
+                        "Turnkey API key not provided and not found in environment".to_string()
+                    ))?
+            } else {
+                api_key
+            };
+
+            // Validate API key format (should be a secure token)
+            if effective_api_key.len() < 32 {
                 return Err(SolanaRecoverError::AuthenticationError(
-                    "Turnkey API key cannot be empty".to_string()
+                    "Turnkey API key is too short (minimum 32 characters)".to_string()
                 ));
             }
+
+            // Check for common weak patterns
+            if effective_api_key.contains("test") || effective_api_key.contains("demo") {
+                return Err(SolanaRecoverError::AuthenticationError(
+                    "Test/demo API keys are not allowed in production".to_string()
+                ));
+            }
+
+            // Validate organization ID
             if organization_id.is_empty() {
                 return Err(SolanaRecoverError::AuthenticationError(
                     "Turnkey organization ID cannot be empty".to_string()
                 ));
             }
+
+            // Validate private key ID
             if private_key_id.is_empty() {
                 return Err(SolanaRecoverError::AuthenticationError(
                     "Turnkey private key ID cannot be empty".to_string()
                 ));
             }
+
+            // Validate API URL against allowed origins
+            if !self.is_origin_allowed(&self.config.api_url) {
+                return Err(SolanaRecoverError::AuthenticationError(
+                    "API URL is not in allowed origins list".to_string()
+                ));
+            }
+
             Ok(())
         } else {
             Err(SolanaRecoverError::AuthenticationError(
                 "Invalid Turnkey credentials format".to_string()
             ))
         }
+    }
+
+    /// Check if origin is in allowed list
+    fn is_origin_allowed(&self, url: &str) -> bool {
+        if self.config.allowed_origins.is_empty() {
+            return true; // No restrictions if list is empty
+        }
+
+        self.config.allowed_origins.iter().any(|allowed| {
+            url.starts_with(allowed) || allowed == "*"
+        })
     }
 
     /// Retry an operation with exponential backoff

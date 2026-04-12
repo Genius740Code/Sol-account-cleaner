@@ -8,11 +8,12 @@
 
 use solana_recover::*;
 use solana_recover::wallet::*;
+use solana_recover::utils::{Logger, LoggingConfig};
 use std::sync::Arc;
 use tracing::{info, warn, error};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     // Initialize logging
     let logging_config = LoggingConfig {
         level: "info".to_string(),
@@ -22,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         json_fields: vec![],
     };
     
-    Logger::init(logging_config)?;
+    Logger::init(logging_config).map_err(|e| SolanaRecoverError::ConfigError(e.to_string()))?;
     
     info!("🚀 Starting Comprehensive Wallet Integration Demo");
     
@@ -59,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn demo_turnkey_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), Box<dyn std::error::Error>> {
+async fn demo_turnkey_wallet(wallet_manager: &Arc<WalletManager>) -> Result<()> {
     info!("\n🔐 === Turnkey Wallet Demo ===");
     
     let turnkey_credentials = WalletCredentials {
@@ -80,12 +81,12 @@ async fn demo_turnkey_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), 
             
             // Get wallet info
             if let Some(wallet_info) = wallet_manager.get_wallet_info(&connection.id).await {
-                info!("   Public Key: {}", wallet_info.public_key.unwrap_or("N/A".to_string()));
+                info!("   Public Key: {}", wallet_info.public_key.as_str());
             }
             
             // Demonstrate transaction signing
             let demo_transaction = create_demo_transaction();
-            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction).await {
+            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction, None).await {
                 Ok(signature) => {
                     info!("✅ Transaction signed successfully");
                     info!("   Signature length: {} bytes", signature.len());
@@ -107,7 +108,7 @@ async fn demo_turnkey_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), 
     Ok(())
 }
 
-async fn demo_phantom_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), Box<dyn std::error::Error>> {
+async fn demo_phantom_wallet(wallet_manager: &Arc<WalletManager>) -> Result<()> {
     info!("\n👻 === Phantom Wallet Demo ===");
     
     let phantom_credentials = WalletCredentials {
@@ -125,12 +126,12 @@ async fn demo_phantom_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), 
             
             // Get wallet info
             if let Some(wallet_info) = wallet_manager.get_wallet_info(&connection.id).await {
-                info!("   Public Key: {}", wallet_info.public_key.unwrap_or("N/A".to_string()));
+                info!("   Public Key: {}", wallet_info.public_key.as_str());
             }
             
             // Demonstrate transaction signing
             let demo_transaction = create_demo_transaction();
-            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction).await {
+            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction, None).await {
                 Ok(signature) => {
                     info!("✅ Transaction signed successfully");
                     info!("   Signature length: {} bytes", signature.len());
@@ -152,7 +153,7 @@ async fn demo_phantom_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), 
     Ok(())
 }
 
-async fn demo_solflare_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), Box<dyn std::error::Error>> {
+async fn demo_solflare_wallet(wallet_manager: &Arc<WalletManager>) -> Result<()> {
     info!("\n☀️ === Solflare Wallet Demo ===");
     
     let solflare_credentials = WalletCredentials {
@@ -170,12 +171,12 @@ async fn demo_solflare_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(),
             
             // Get wallet info
             if let Some(wallet_info) = wallet_manager.get_wallet_info(&connection.id).await {
-                info!("   Public Key: {}", wallet_info.public_key.unwrap_or("N/A".to_string()));
+                info!("   Public Key: {}", wallet_info.public_key.as_str());
             }
             
             // Demonstrate transaction signing
             let demo_transaction = create_demo_transaction();
-            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction).await {
+            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction, None).await {
                 Ok(signature) => {
                     info!("✅ Transaction signed successfully");
                     info!("   Signature length: {} bytes", signature.len());
@@ -197,12 +198,12 @@ async fn demo_solflare_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(),
     Ok(())
 }
 
-async fn demo_private_key_wallet(wallet_manager: &Arc<WalletManager>) -> Result<(), Box<dyn std::error::Error>> {
+async fn demo_private_key_wallet(wallet_manager: &Arc<WalletManager>) -> Result<()> {
     info!("\n🔑 === Private Key Wallet Demo ===");
     
     // Generate a new keypair for demo
     let keypair = solana_sdk::signer::keypair::Keypair::new();
-    let private_key = bs58::encode(keypair.to_bytes());
+    let private_key = bs58::encode(keypair.to_bytes()).into_string();
     
     let private_key_credentials = WalletCredentials {
         wallet_type: WalletType::PrivateKey,
@@ -219,12 +220,12 @@ async fn demo_private_key_wallet(wallet_manager: &Arc<WalletManager>) -> Result<
             
             // Get wallet info
             if let Some(wallet_info) = wallet_manager.get_wallet_info(&connection.id).await {
-                info!("   Public Key: {}", wallet_info.public_key.unwrap_or("N/A".to_string()));
+                info!("   Public Key: {}", wallet_info.public_key.as_str());
             }
             
             // Demonstrate transaction signing
             let demo_transaction = create_demo_transaction();
-            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction).await {
+            match wallet_manager.sign_with_wallet(&connection.id, &demo_transaction, None).await {
                 Ok(signature) => {
                     info!("✅ Transaction signed successfully");
                     info!("   Signature length: {} bytes", signature.len());
@@ -245,7 +246,7 @@ async fn demo_private_key_wallet(wallet_manager: &Arc<WalletManager>) -> Result<
     Ok(())
 }
 
-async fn demo_wallet_manager_features(wallet_manager: &Arc<WalletManager>) -> Result<(), Box<dyn std::error::Error>> {
+async fn demo_wallet_manager_features(wallet_manager: &Arc<WalletManager>) -> Result<()> {
     info!("\n🛠️ === Wallet Manager Features Demo ===");
     
     // Get connection metrics

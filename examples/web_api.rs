@@ -71,6 +71,7 @@ struct HealthStatus {
 }
 
 // Global state for the server
+#[derive(Clone)]
 struct AppState {
     start_time: Instant,
     batch_processor: BatchProcessor,

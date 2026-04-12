@@ -1,5 +1,5 @@
-use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
-use crate::core::parallel_processor::{IntelligentParallelProcessor, Priority};
+use crate::core::{Result, SolanaRecoverError, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
+use crate::core::parallel_processor::IntelligentParallelProcessor;
 use crate::rpc::{ConnectionPoolTrait};
 use crate::utils::memory_integration::{MemoryIntegrationLayer, ScannerMemoryManager};
 use solana_sdk::pubkey::Pubkey;
@@ -8,10 +8,8 @@ use uuid::Uuid;
 use std::time::Instant;
 use chrono::Utc;
 use std::str::FromStr;
-use solana_account_decoder::UiAccountEncoding;
-use bs58;
-use base64;
-use tracing::{info, debug, warn, error};
+use tracing::{info, debug, error};
+use serde::{Deserialize, Serialize};
 
 /// Enhanced wallet scanner with integrated memory management
 #[derive(Clone)]
@@ -28,7 +26,7 @@ pub struct EnhancedWalletScanner {
     config: EnhancedScannerConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancedScannerConfig {
     /// Enable memory pooling for scanner operations
     pub enable_memory_pooling: bool,
@@ -43,7 +41,7 @@ pub struct EnhancedScannerConfig {
     pub memory_config: ScannerMemoryConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchProcessingConfig {
     /// Enable intelligent batch sizing
     pub enable_intelligent_sizing: bool,
@@ -61,7 +59,7 @@ pub struct BatchProcessingConfig {
     pub enable_work_stealing: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannerMemoryConfig {
     /// Pool size for wallet info objects
     pub wallet_info_pool_size: usize,
@@ -159,16 +157,17 @@ impl EnhancedWalletScanner {
         max_concurrent_tasks: usize,
         config: EnhancedScannerConfig,
     ) -> Result<Self> {
+        let config_clone = config.clone();
         let scanner = Self {
             connection_pool: connection_pool.clone(),
             parallel_processor: None,
             memory_integration: crate::utils::memory_integration::get_global_memory_integration(),
             scanner_memory_manager: crate::utils::memory_integration::get_global_memory_integration().create_scanner_memory_manager(),
-            config,
+            config: config_clone,
         };
         
         let parallel_processor = Arc::new(IntelligentParallelProcessor::new(
-            Arc::new(scanner.clone()),
+            Arc::new(crate::core::scanner::WalletScanner::new(scanner.connection_pool.clone())),
             max_workers,
             max_concurrent_tasks,
         )?);
@@ -201,13 +200,10 @@ impl EnhancedWalletScanner {
         };
         
         // Process batch with memory-aware parallel processing
-        let result = match &mut self.parallel_processor {
-            Some(processor) => {
-                self.process_batch_with_memory_tracking(processor, &processed_request).await?
-            }
-            None => {
-                self.scan_batch_sequential_enhanced(&processed_request).await?
-            }
+        let result = if let Some(processor) = &self.parallel_processor {
+            self.process_batch_with_memory_tracking(processor, &processed_request).await?
+        } else {
+            self.scan_batch_sequential_enhanced(&processed_request).await?
         };
         
         let duration = start_time.elapsed();
@@ -258,16 +254,24 @@ impl EnhancedWalletScanner {
     /// Process batch with memory tracking and optimization
     async fn process_batch_with_memory_tracking(
         &self,
-        processor: &mut IntelligentParallelProcessor,
+        processor: &Arc<IntelligentParallelProcessor>,
         request: &BatchScanRequest,
     ) -> Result<BatchScanResult> {
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
         
         // Monitor memory during processing
         let initial_memory = self.memory_integration.get_memory_manager().get_memory_stats().total_allocated_bytes;
         
+        // Create a local mutable processor for this batch
+        // Note: This is a workaround since we can't get mutable reference from Arc
+        let mut local_processor = IntelligentParallelProcessor::new(
+            processor.scanner.clone(),
+            Some(processor.max_workers),
+            processor.semaphore.available_permits(),
+        )?;
+        
         // Process the batch
-        let result = processor.process_batch_intelligently(request).await?;
+        let result = local_processor.process_batch_intelligently(request).await?;
         
         // Track memory usage
         let final_memory = self.memory_integration.get_memory_manager().get_memory_stats().total_allocated_bytes;
@@ -352,7 +356,7 @@ impl EnhancedWalletScanner {
         let pubkey = match Pubkey::from_str(wallet_address) {
             Ok(key) => key,
             Err(e) => {
-                return Err(SolanaRecoverError::InvalidAddress(format!("Invalid wallet address: {}", e)));
+                return Err(SolanaRecoverError::InvalidWalletAddress(format!("Invalid wallet address: {}", e)));
             }
         };
         
@@ -412,12 +416,17 @@ impl EnhancedWalletScanner {
                 empty_account.owner = keyed_account.account.owner.to_string();
                 
                 // Try to decode account data for mint information
-                if let Some(data) = &keyed_account.account.data {
-                    if data.len() >= 165 { // Token account size
-                        // Extract mint from token account data (simplified)
-                        let mint_bytes = &data[0..32];
-                        let mint_pubkey = Pubkey::try_from(mint_bytes).unwrap_or_default();
-                        empty_account.mint = Some(mint_pubkey.to_string());
+                match &keyed_account.account.data {
+                    solana_account_decoder::UiAccountData::Binary(data, _) => {
+                        if data.len() >= 165 { // Token account size
+                            // Extract mint from token account data (simplified)
+                            let mint_bytes = &data[0..32];
+                            let mint_pubkey = Pubkey::try_from(mint_bytes).unwrap_or_default();
+                            empty_account.mint = Some(mint_pubkey.to_string());
+                        }
+                    }
+                    _ => {
+                        // Other data formats - skip mint extraction
                     }
                 }
                 
@@ -463,9 +472,9 @@ impl EnhancedWalletScanner {
     }
     
     /// Get comprehensive scanner report
-    pub fn get_comprehensive_report(&self) -> serde_json::Value {
+    pub async fn get_comprehensive_report(&self) -> serde_json::Value {
         let scanner_stats = self.get_scanner_stats();
-        let memory_report = self.memory_integration.generate_integration_report();
+        let memory_report = self.memory_integration.generate_integration_report().await;
         
         serde_json::json!({
             "timestamp": chrono::Utc::now(),

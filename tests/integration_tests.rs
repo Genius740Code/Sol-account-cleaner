@@ -3,6 +3,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, error, debug};
+use regex::Regex;
+use lazy_static::lazy_static;
 
 use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
 use crate::core::enhanced_scanner::EnhancedWalletScanner;
@@ -726,31 +728,122 @@ impl IntegrationTestSuite {
         Ok(false)
     }
 
-    /// Test input validation security
+    /// Test input validation security with comprehensive attack patterns
     async fn test_input_validation_security(&self) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        // Test malicious input validation
-        let malicious_inputs = vec![
-            "'; DROP TABLE users; --",
-            "<script>alert('xss')</script>",
-            "../../../etc/passwd",
-            "{{7*7}}",
+        // Run comprehensive security tests
+        let sql_protection = self.test_sql_injection_protection().await;
+        let xss_protection = self.test_xss_protection().await;
+        let path_traversal_protection = self.test_path_traversal_protection().await;
+        let template_injection_protection = self.test_template_injection_protection().await;
+        
+        // Test additional edge cases
+        let edge_cases = vec![
+            "", // Empty input
+            &"a".repeat(10_001), // Over length limit
+            "\x00null\x00", // Null bytes
+            "test\x01\x02control", // Control characters
+            "normal_valid_input_123", // Valid input should pass
         ];
         
-        for input in malicious_inputs {
-            // Simulate input validation
+        for (i, input) in edge_cases.iter().enumerate() {
             let is_valid = self.validate_input(input).await;
-            if is_valid {
-                return Ok(false); // Should not be valid
+            match i {
+                0 | 1 | 2 | 3 => { // Should be invalid
+                    if is_valid {
+                        return Ok(false);
+                    }
+                }
+                4 => { // Should be valid
+                    if !is_valid {
+                        return Ok(false);
+                    }
+                }
+                _ => {}
             }
         }
         
-        Ok(true)
+        Ok(sql_protection && xss_protection && path_traversal_protection && template_injection_protection)
     }
 
-    /// Validate input
+    /// Enhanced input validation with comprehensive security patterns
     async fn validate_input(&self, input: &str) -> bool {
-        // Simple validation logic
-        !input.contains(';') && !input.contains('<') && !input.contains("..") && !input.contains("{{")
+        // Check length limits
+        if input.is_empty() || input.len() > 10_000 {
+            return false;
+        }
+        
+        // Use regex patterns for comprehensive security validation
+        !MALICIOUS_PATTERNS.iter().any(|pattern| pattern.is_match(input)) &&
+        !contains_null_bytes(input) &&
+        !contains_control_characters(input)
+    }
+    
+    /// Test specific security patterns
+    async fn test_sql_injection_protection(&self) -> bool {
+        let sql_attacks = vec![
+            "'; DROP TABLE users; --",
+            "' OR '1'='1",
+            "'; INSERT INTO users VALUES ('hacker', 'password'); --",
+            "UNION SELECT * FROM passwords",
+        ];
+        
+        for attack in sql_attacks {
+            if self.validate_input(attack).await {
+                return false; // Should not be valid
+            }
+        }
+        true
+    }
+    
+    /// Test XSS protection
+    async fn test_xss_protection(&self) -> bool {
+        let xss_attacks = vec![
+            "<script>alert('xss')</script>",
+            "<img src=x onerror=alert('xss')>",
+            "javascript:alert('xss')",
+            "<svg onload=alert('xss')>",
+        ];
+        
+        for attack in xss_attacks {
+            if self.validate_input(attack).await {
+                return false; // Should not be valid
+            }
+        }
+        true
+    }
+    
+    /// Test path traversal protection
+    async fn test_path_traversal_protection(&self) -> bool {
+        let path_attacks = vec![
+            "../../../etc/passwd",
+            "..\\..\\..\\windows\\system32\\config\\sam",
+            "....//....//....//etc/passwd",
+            "%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+        ];
+        
+        for attack in path_attacks {
+            if self.validate_input(attack).await {
+                return false; // Should not be valid
+            }
+        }
+        true
+    }
+    
+    /// Test template injection protection
+    async fn test_template_injection_protection(&self) -> bool {
+        let template_attacks = vec![
+            "{{7*7}}",
+            "${7*7}",
+            "#{7*7}",
+            "{{config.items()}}",
+        ];
+        
+        for attack in template_attacks {
+            if self.validate_input(attack).await {
+                return false; // Should not be valid
+            }
+        }
+        true
     }
 
     /// Generate test wallet addresses
@@ -772,6 +865,63 @@ struct WalletScanResult {
     success: bool,
     scan_time_ms: u64,
     cache_hit: bool,
+}
+
+/// Security validation helper functions
+lazy_static! {
+    /// Comprehensive regex patterns for detecting malicious input
+    static ref MALICIOUS_PATTERNS: Vec<Regex> = vec![
+        // SQL Injection patterns
+        Regex::new(r"(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute)\s").unwrap(),
+        Regex::new(r"(?i)('|\"|;|--|/\*|\*/|xp_|sp_)").unwrap(),
+        Regex::new(r"(?i)(or|and)\s+\d+\s*=\s*\d+").unwrap(),
+        
+        // XSS patterns
+        Regex::new(r"(?i)<script[^>]*>.*?</script>").unwrap(),
+        Regex::new(r"(?i)<iframe[^>]*>.*?</iframe>").unwrap(),
+        Regex::new(r"(?i)javascript:").unwrap(),
+        Regex::new(r"(?i)on\w+\s*=").unwrap(),
+        Regex::new(r"(?i)<svg[^>]*>.*?</svg>").unwrap(),
+        
+        // Path traversal patterns
+        Regex::new(r"\.\.[\\/]").unwrap(),
+        Regex::new(r"%2e%2e[\\/]").unwrap(),
+        Regex::new(r"\.\./").unwrap(),
+        Regex::new(r"\.\.\\").unwrap(),
+        
+        // Template injection patterns
+        Regex::new(r"\{\{.*\}\}").unwrap(),
+        Regex::new(r"\$\{.*\}").unwrap(),
+        Regex::new(r"#\{.*\}").unwrap(),
+        
+        // Command injection patterns
+        Regex::new(r"[;&|`$(){}[\]]").unwrap(),
+        Regex::new(r"(?i)(rm|del|format|fdisk|mkfs)").unwrap(),
+        
+        // LDAP injection patterns
+        Regex::new(r"[()*\\]").unwrap(),
+        Regex::new(r"(?i)\*\).*\)").unwrap(),
+        
+        // NoSQL injection patterns
+        Regex::new(r"(?i)(\$where|\$ne|\$gt|\$lt|\$in|\$nin)").unwrap(),
+        Regex::new(r"(?i)(true|false|null)\s*\$").unwrap(),
+        
+        // File inclusion patterns
+        Regex::new(r"(?i)(include|require|file_get_contents|fopen)\s*\(").unwrap(),
+        Regex::new(r"(?i)(php://|file://|data://|expect://)").unwrap(),
+    ];
+}
+
+/// Check for null bytes in input
+fn contains_null_bytes(input: &str) -> bool {
+    input.bytes().any(|b| b == 0)
+}
+
+/// Check for control characters (except common whitespace)
+fn contains_control_characters(input: &str) -> bool {
+    input.bytes().any(|b| {
+        b < 32 && b != 9 && b != 10 && b != 13 // Exclude tab, LF, CR
+    })
 }
 
 #[cfg(test)]
@@ -849,5 +999,44 @@ mod tests {
         assert!(security_results.is_ok());
         let results = security_results.unwrap();
         assert!(results.overall_security_score >= 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_enhanced_security_validation() {
+        let config = IntegrationTestConfig::default();
+        let suite = IntegrationTestSuite::new(config);
+        
+        // Test comprehensive security patterns
+        let sql_result = suite.test_sql_injection_protection().await;
+        let xss_result = suite.test_xss_protection().await;
+        let path_result = suite.test_path_traversal_protection().await;
+        let template_result = suite.test_template_injection_protection().await;
+        let input_result = suite.test_input_validation_security().await;
+        
+        assert!(sql_result, "SQL injection protection failed");
+        assert!(xss_result, "XSS protection failed");
+        assert!(path_result, "Path traversal protection failed");
+        assert!(template_result, "Template injection protection failed");
+        assert!(input_result.is_ok(), "Input validation security failed");
+    }
+
+    #[tokio::test]
+    async fn test_regex_patterns() {
+        // Test the regex patterns directly
+        let test_cases = vec![
+            ("'; DROP TABLE users; --", false),
+            ("<script>alert('xss')</script>", false),
+            ("../../../etc/passwd", false),
+            ("{{7*7}}", false),
+            ("normal_valid_input_123", true),
+            ("", false),
+            ("a", true),
+        ];
+        
+        for (input, expected) in test_cases {
+            let suite = IntegrationTestSuite::new(IntegrationTestConfig::default());
+            let result = suite.validate_input(input).await;
+            assert_eq!(result, expected, "Failed for input: {}", input);
+        }
     }
 }

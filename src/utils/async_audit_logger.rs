@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, mpsc};
 use tokio::time::interval;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, warn, error};
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use base64::{Engine as _, engine::general_purpose};
@@ -19,6 +19,8 @@ pub struct AsyncAuditLogger {
 }
 
 /// Audit log processor with batching and optimization
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct AuditLogProcessor {
     /// Log entry queue
     log_queue: Arc<RwLock<mpsc::UnboundedSender<AuditLogEntry>>>,
@@ -27,6 +29,7 @@ pub struct AuditLogProcessor {
     /// Metrics
     metrics: Arc<RwLock<AuditMetrics>>,
     /// Configuration
+    #[allow(dead_code)]
     config: AuditConfig,
 }
 
@@ -57,7 +60,7 @@ impl Default for AuditConfig {
             enable_compression: true,
             enable_signatures: true,
             max_queue_size: 100_000,
-            retention_period: Duration::from_days(30),
+            retention_period: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
             enable_structured: true,
         }
     }
@@ -138,10 +141,15 @@ pub struct AuditMetrics {
 
 /// Batch of audit log entries
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct AuditBatch {
+    #[allow(dead_code)]
     entries: Vec<AuditLogEntry>,
+    #[allow(dead_code)]
     batch_id: String,
+    #[allow(dead_code)]
     created_at: Instant,
+    #[allow(dead_code)]
     size_bytes: usize,
 }
 
@@ -149,7 +157,7 @@ impl AsyncAuditLogger {
     /// Create new async audit logger
     pub fn new(config: AuditConfig) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let (tx, rx) = mpsc::unbounded_channel();
-        let tx = Arc::new(RwLock::new(tx));
+        let _tx = Arc::new(RwLock::new(tx));
         
         let processor = Arc::new(AuditLogProcessor::new(config.clone(), rx)?);
         
@@ -310,7 +318,7 @@ impl AsyncAuditLogger {
 }
 
 impl AuditLogProcessor {
-    fn new(config: AuditConfig, mut receiver: mpsc::UnboundedReceiver<AuditLogEntry>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    fn new(config: AuditConfig, receiver: mpsc::UnboundedReceiver<AuditLogEntry>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let (tx, _) = mpsc::unbounded_channel();
         let tx = Arc::new(RwLock::new(tx));
         let metrics = Arc::new(RwLock::new(AuditMetrics::default()));
@@ -432,7 +440,7 @@ impl AuditLogProcessor {
 
     /// Write batch to storage (placeholder implementation)
     async fn write_batch_to_storage(
-        config: &AuditConfig,
+        _config: &AuditConfig,
         batch: &AuditBatch,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // In a real implementation, this would write to:

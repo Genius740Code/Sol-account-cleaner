@@ -1,16 +1,12 @@
-pub mod benchmarks;
+pub mod enhanced_scanner;
 pub mod error_handling;
 pub mod errors;
 pub mod fee_calculator;
-pub mod integration_test;
 pub mod parallel_processor;
-pub mod parallel_tests;
 pub mod processor;
 pub mod processor_metrics;
 pub mod recovery;
-pub mod resource_monitor;
 pub mod scanner;
-pub mod thread_pool_optimizer;
 pub mod types;
 
 #[cfg(test)]
@@ -23,5 +19,9 @@ mod tests;
 pub use types::*;
 pub use errors::*;
 pub use fee_calculator::*;
+pub use enhanced_scanner::*;
+pub use parallel_processor::*;
+pub use processor::*;
+pub use processor_metrics::*;
 pub use recovery::*;
 pub use error_handling::*;

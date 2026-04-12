@@ -8,6 +8,10 @@ pub mod advanced_buffer_pools;
 pub mod gc_scheduler;
 pub mod memory_monitor;
 pub mod memory_integration;
+pub mod enhanced_metrics;
+pub mod http2_client;
+pub mod hardware_encryption;
+pub mod async_audit_logger;
 
 // Re-export specific items to avoid conflicts
 pub use metrics::MetricsConfig as MetricsCollectorConfig;
@@ -20,3 +24,7 @@ pub use advanced_buffer_pools::{AdvancedBufferPool, BufferPoolConfig, BufferPool
 pub use gc_scheduler::{GcScheduler, GcSchedulerConfig, GcSchedulerStats};
 pub use memory_monitor::{MemoryMonitor, MemoryMonitorConfig, MemoryStatistics};
 pub use memory_integration::{MemoryIntegrationLayer, MemoryIntegrationConfig, ScannerMemoryManager, RpcMemoryManager};
+pub use enhanced_metrics::{EnhancedMetricsCollector, EnhancedMetricsConfig, ComprehensiveMetricsSnapshot, DetailedMetrics};
+pub use http2_client::Http2Client;
+pub use hardware_encryption::{HardwareEncryptionEngine, EncryptionConfig};
+pub use async_audit_logger::AsyncAuditLogger;

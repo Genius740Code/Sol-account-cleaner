@@ -22,8 +22,6 @@ pub struct EnhancedConnectionPool {
     circuit_breakers: Arc<DashMap<String, Arc<CircuitBreaker>>>,
     metrics: Arc<RwLock<EnhancedPoolMetrics>>,
     config: PoolConfig,
-    connection_multiplexer: Option<Arc<ConnectionMultiplexer>>,
-    endpoint_selector: Arc<EndpointSelector>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,10 +45,6 @@ pub struct PoolConfig {
     pub load_balance_strategy: LoadBalanceStrategy,
     pub enable_connection_multiplexing: bool,
     pub enable_compression: bool,
-    pub max_concurrent_requests: usize,
-    pub request_timeout_ms: u64,
-    pub enable_adaptive_load_balancing: bool,
-    pub endpoint_health_threshold: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,17 +80,13 @@ pub struct EndpointMetrics {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_connections_per_endpoint: 100, // Increased for better performance
+            max_connections_per_endpoint: 50,
             health_check_interval: Duration::from_secs(30),
             circuit_breaker_threshold: 5,
             circuit_breaker_timeout: Duration::from_secs(60),
             load_balance_strategy: LoadBalanceStrategy::WeightedRoundRobin,
             enable_connection_multiplexing: true,
             enable_compression: true,
-            max_concurrent_requests: 1000,
-            request_timeout_ms: 30000,
-            enable_adaptive_load_balancing: true,
-            endpoint_health_threshold: 0.8,
         }
     }
 }
@@ -118,18 +108,6 @@ impl EnhancedConnectionPool {
             })
             .collect();
 
-        let connection_multiplexer = if config.enable_connection_multiplexing {
-            Some(Arc::new(ConnectionMultiplexer::new(config.max_concurrent_requests)))
-        } else {
-            None
-        };
-        
-        let endpoint_selector = Arc::new(EndpointSelector::new(
-            config.load_balance_strategy.clone(),
-            config.enable_adaptive_load_balancing,
-            config.endpoint_health_threshold,
-        ));
-        
         let pool = Self {
             endpoints: Arc::new(RwLock::new(weighted_endpoints)),
             connection_pools: Arc::new(DashMap::new()),
@@ -138,8 +116,6 @@ impl EnhancedConnectionPool {
             circuit_breakers: Arc::new(DashMap::new()),
             metrics: Arc::new(RwLock::new(EnhancedPoolMetrics::default())),
             config,
-            connection_multiplexer,
-            endpoint_selector,
         };
 
         // Initialize connection pools and circuit breakers for each endpoint
@@ -187,8 +163,7 @@ impl EnhancedConnectionPool {
 
     async fn select_endpoint(&self) -> Result<String> {
         let endpoints = self.endpoints.read().await;
-        let selected_endpoint = self.endpoint_selector.select_endpoint(&*endpoints).await?;
-        Ok(selected_endpoint.endpoint.url.clone())
+        self.load_balancer.select_endpoint(&*endpoints).await
     }
 
     async fn get_client_for_endpoint(&self, endpoint_url: &str) -> Result<Arc<RpcClientWrapper>> {
@@ -305,13 +280,10 @@ impl ConnectionPoolTrait for EnhancedConnectionPool {
         let endpoint_url = self.select_endpoint().await?;
         let client = self.get_client_for_endpoint(&endpoint_url).await?;
         
-        // Wrap client with metrics tracking if multiplexing is enabled
-        if let Some(ref multiplexer) = self.connection_multiplexer {
-            let metrics_client = multiplexer.wrap_client(client, endpoint_url.clone()).await?;
-            Ok(metrics_client)
-        } else {
-            Ok(client)
-        }
+        // Wrap client to automatically update metrics
+        // For now, return the base client without metrics wrapping
+        // TODO: Implement proper metrics-aware client wrapper
+        Ok(client)
     }
 }
 
@@ -594,174 +566,5 @@ impl BasicConnectionPool {
             // In a real implementation, we'd track client health
             // clients.push(client);
         }
-    }
-}
-
-/// Connection multiplexer for efficient connection reuse
-pub struct ConnectionMultiplexer {
-    #[allow(dead_code)]
-    max_concurrent_requests: usize,
-    active_requests: Arc<tokio::sync::Semaphore>,
-    connection_cache: Arc<DashMap<String, Arc<RpcClientWrapper>>>,
-    #[allow(dead_code)]
-    request_queue: Arc<tokio::sync::Mutex<Vec<PendingRequest>>>,
-}
-
-#[derive(Debug)]
-struct PendingRequest {
-    #[allow(dead_code)]
-    endpoint_url: String,
-    #[allow(dead_code)]
-    response_tx: tokio::sync::oneshot::Sender<Arc<RpcClientWrapper>>,
-    #[allow(dead_code)]
-    timestamp: Instant,
-}
-
-impl ConnectionMultiplexer {
-    pub fn new(max_concurrent_requests: usize) -> Self {
-        Self {
-            max_concurrent_requests,
-            active_requests: Arc::new(tokio::sync::Semaphore::new(max_concurrent_requests)),
-            connection_cache: Arc::new(DashMap::new()),
-            request_queue: Arc::new(tokio::sync::Mutex::new(Vec::new())),
-        }
-    }
-    
-    pub async fn wrap_client(&self, client: Arc<RpcClientWrapper>, endpoint_url: String) -> Result<Arc<RpcClientWrapper>> {
-        // Check if we have a cached connection for this endpoint
-        if let Some(cached_client) = self.connection_cache.get(&endpoint_url) {
-            return Ok(cached_client.clone());
-        }
-        
-        // Acquire semaphore for concurrent request limiting
-        let _permit = self.active_requests.acquire().await
-            .map_err(|_| SolanaRecoverError::NetworkError("Failed to acquire request permit".to_string()))?;
-        
-        // Cache the connection for reuse
-        self.connection_cache.insert(endpoint_url.clone(), client.clone());
-        
-        Ok(client)
-    }
-    
-    pub async fn get_cached_client(&self, endpoint_url: &str) -> Option<Arc<RpcClientWrapper>> {
-        self.connection_cache.get(endpoint_url).map(|client| client.clone())
-    }
-    
-    pub fn clear_cache(&self) {
-        self.connection_cache.clear();
-    }
-    
-    pub fn cache_size(&self) -> usize {
-        self.connection_cache.len()
-    }
-}
-
-/// Advanced endpoint selector with adaptive load balancing
-pub struct EndpointSelector {
-    strategy: LoadBalanceStrategy,
-    #[allow(dead_code)]
-    enable_adaptive: bool,
-    health_threshold: f64,
-    round_robin_counter: tokio::sync::Mutex<usize>,
-    endpoint_stats: Arc<DashMap<String, EndpointStats>>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct EndpointStats {
-    total_requests: u64,
-    successful_requests: u64,
-    avg_response_time: f64,
-    last_used: Option<Instant>,
-    error_rate: f64,
-}
-
-impl EndpointSelector {
-    pub fn new(strategy: LoadBalanceStrategy, enable_adaptive: bool, health_threshold: f64) -> Self {
-        Self {
-            strategy,
-            enable_adaptive,
-            health_threshold,
-            round_robin_counter: tokio::sync::Mutex::new(0),
-            endpoint_stats: Arc::new(DashMap::new()),
-        }
-    }
-    
-    pub async fn select_endpoint<'a>(&self, endpoints: &'a [WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
-        let healthy_endpoints: Vec<&WeightedEndpoint> = endpoints
-            .iter()
-            .filter(|e| e.endpoint.healthy && e.success_rate >= self.health_threshold)
-            .collect();
-
-        if healthy_endpoints.is_empty() {
-            return Err(SolanaRecoverError::ConfigError("No healthy endpoints available".to_string()));
-        }
-
-        let selected_endpoint = match self.strategy {
-            LoadBalanceStrategy::RoundRobin => self.select_round_robin(&healthy_endpoints).await?,
-            LoadBalanceStrategy::WeightedRoundRobin => self.select_weighted_round_robin(&healthy_endpoints).await?,
-            LoadBalanceStrategy::LeastConnections => self.select_least_connections(&healthy_endpoints).await?,
-            LoadBalanceStrategy::ResponseTime => self.select_by_response_time(&healthy_endpoints).await?,
-        };
-        
-        // Update endpoint statistics
-        self.update_endpoint_stats(&selected_endpoint.endpoint.url, true, None).await;
-        
-        Ok(selected_endpoint)
-    }
-    
-    async fn select_round_robin<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
-        let mut counter = self.round_robin_counter.lock().await;
-        let index = *counter % endpoints.len();
-        *counter += 1;
-        Ok(endpoints[index])
-    }
-    
-    async fn select_weighted_round_robin<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
-        let total_weight: f64 = endpoints.iter().map(|e| e.weight).sum();
-        let mut random_weight = rand::random::<f64>() * total_weight;
-        
-        for endpoint in endpoints {
-            random_weight -= endpoint.weight;
-            if random_weight <= 0.0 {
-                return Ok(endpoint);
-            }
-        }
-        
-        Ok(endpoints[0])
-    }
-    
-    async fn select_least_connections<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
-        let endpoint = endpoints
-            .iter()
-            .min_by(|a, b| a.response_time_ms.partial_cmp(&b.response_time_ms).unwrap())
-            .unwrap();
-        Ok(endpoint)
-    }
-    
-    async fn select_by_response_time<'a>(&self, endpoints: &[&'a WeightedEndpoint]) -> Result<&'a WeightedEndpoint> {
-        let endpoint = endpoints
-            .iter()
-            .min_by(|a, b| a.response_time_ms.partial_cmp(&b.response_time_ms).unwrap())
-            .unwrap();
-        Ok(endpoint)
-    }
-    
-    pub async fn update_endpoint_stats(&self, endpoint_url: &str, success: bool, response_time: Option<f64>) {
-        let mut stats = self.endpoint_stats.entry(endpoint_url.to_string()).or_default();
-        stats.total_requests += 1;
-        
-        if success {
-            stats.successful_requests += 1;
-            if let Some(rt) = response_time {
-                stats.avg_response_time = (stats.avg_response_time * 0.9) + (rt * 0.1);
-            }
-        }
-        
-        stats.last_used = Some(Instant::now());
-        stats.error_rate = 1.0 - (stats.successful_requests as f64 / stats.total_requests as f64);
-    }
-    
-    pub fn get_endpoint_stats(&self, endpoint_url: &str) -> Option<EndpointStats> {
-        self.endpoint_stats.get(endpoint_url).map(|stats| stats.clone())
     }
 }

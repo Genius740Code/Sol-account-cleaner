@@ -608,7 +608,7 @@ mod tests {
         
         let (system, application, business) = service.get_current_metrics().await;
         
-        assert_eq!(system.total_connections, 0);
+        assert_eq!(system.active_connections, 0);
         assert_eq!(application.total_requests, 0);
         assert_eq!(business.daily_active_users, 0);
     }
@@ -650,8 +650,8 @@ mod tests {
         
         // Check alerts
         MonitoringService::check_alerts(
-            &service.system_metrics.read().await,
-            &service.application_metrics.read().await,
+            &*service.system_metrics.read().await,
+            &*service.application_metrics.read().await,
             &service.config,
             &service.alerts,
         ).await;

@@ -405,7 +405,7 @@ impl MemoryIntegrationLayer {
 }
 
 /// Scanner-aware memory manager that provides specialized methods for scanner operations
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScannerMemoryManager {
     memory_manager: Arc<EnhancedMemoryManager>,
     config: ScannerMemoryConfig,
