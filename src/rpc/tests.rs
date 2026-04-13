@@ -79,7 +79,9 @@ mod tests {
         assert!(json.is_ok());
 
         // Test JSON deserialization
-        let deserialized: RpcEndpoint = serde_json::from_str(&json.unwrap());
-        assert!(deserialized.is_ok());
+        let deserialized: RpcEndpoint = serde_json::from_str(&json.unwrap()).expect("Failed to deserialize RpcEndpoint");
+        assert_eq!(deserialized.url, endpoint.url);
+        assert_eq!(deserialized.priority, endpoint.priority);
+        assert_eq!(deserialized.rate_limit_rps, endpoint.rate_limit_rps);
     }
 }

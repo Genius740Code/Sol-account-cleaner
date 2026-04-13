@@ -5,6 +5,7 @@ mod tests {
     use crate::wallet::{WalletManager, WalletCredentials, WalletCredentialData};
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
+    use std::str::FromStr;
     use uuid::Uuid;
 
     fn create_test_recovery_config() -> RecoveryConfig {

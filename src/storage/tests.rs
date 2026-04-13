@@ -12,6 +12,11 @@ mod tests {
             ttl_seconds: 300,
             max_size: 1000,
             cleanup_interval_seconds: 60,
+            enable_hierarchical_cache: true,
+            l1_cache_size: 100,
+            l2_cache_size: 200,
+            compression_threshold: 1024,
+            enable_metrics: true,
         };
 
         let cache = CacheManager::new(config);
@@ -26,6 +31,11 @@ mod tests {
             ttl_seconds: 300,
             max_size: 1000,
             cleanup_interval_seconds: 60,
+            enable_hierarchical_cache: true,
+            l1_cache_size: 100,
+            l2_cache_size: 200,
+            compression_threshold: 1024,
+            enable_metrics: true,
         };
 
         let cache = CacheManager::new(config);
@@ -55,6 +65,11 @@ mod tests {
             ttl_seconds: 1, // 1 second TTL
             max_size: 1000,
             cleanup_interval_seconds: 1,
+            enable_hierarchical_cache: false,
+            l1_cache_size: 100,
+            l2_cache_size: 200,
+            compression_threshold: 1024,
+            enable_metrics: false,
         };
 
         let cache = CacheManager::new(config);
@@ -164,6 +179,11 @@ mod tests {
             ttl_seconds: 300,
             max_size: 1000,
             cleanup_interval_seconds: 60,
+            enable_hierarchical_cache: true,
+            l1_cache_size: 100,
+            l2_cache_size: 200,
+            compression_threshold: 1024,
+            enable_metrics: true,
         };
 
         // Test JSON serialization

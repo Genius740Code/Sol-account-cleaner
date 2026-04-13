@@ -58,18 +58,17 @@ mod tests {
     fn test_wallet_info_serialization() {
         let wallet_info = WalletInfo {
             address: "11111111111111111111111111111112".to_string(),
-            pubkey: vec![0u8; 32],
-            total_accounts: 100,
-            empty_accounts: 2,
+            pubkey: Pubkey::from_str("11111111111111111111111111111112").unwrap(),
+            total_accounts: 10,
+            empty_accounts: 3,
             recoverable_lamports: 5000000,
             recoverable_sol: 0.005,
             empty_account_addresses: vec![
-                "3GZteV3GuQEm1B47yHnoYFYHpKWYvqxzgGWCBe5fZiSD".to_string(),
-                "7L3nzrnqYajCPe1RG5CiwURYcZyvH5oNVcjESyCg7fnA".to_string(),
+                "11111111111111111111111111111113".to_string(),
+                "11111111111111111111111111111114".to_string(),
+                "11111111111111111111111111111115".to_string(),
             ],
             scan_time_ms: 1000,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
         };
 
         // Test JSON serialization
@@ -77,8 +76,11 @@ mod tests {
         assert!(json.is_ok());
 
         // Test JSON deserialization
-        let deserialized: WalletInfo = serde_json::from_str(&json.unwrap());
-        assert!(deserialized.is_ok());
+        let deserialized: WalletInfo = serde_json::from_str(&json.unwrap()).expect("Failed to deserialize WalletInfo");
+        assert_eq!(deserialized.address, wallet_info.address);
+        assert_eq!(deserialized.total_accounts, wallet_info.total_accounts);
+        assert_eq!(deserialized.empty_accounts, wallet_info.empty_accounts);
+        assert_eq!(deserialized.recoverable_sol, wallet_info.recoverable_sol);
     }
 
     #[test]
@@ -86,10 +88,8 @@ mod tests {
         let empty_account = EmptyAccount {
             address: "11111111111111111111111111111112".to_string(),
             lamports: 5000000,
-            sol: 0.005,
-            account_type: "system".to_string(),
-            executable: false,
             owner: "11111111111111111111111111111111".to_string(),
+            mint: Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string()),
         };
 
         // Test JSON serialization
@@ -97,7 +97,10 @@ mod tests {
         assert!(json.is_ok());
 
         // Test JSON deserialization
-        let deserialized: EmptyAccount = serde_json::from_str(&json.unwrap());
-        assert!(deserialized.is_ok());
+        let deserialized: EmptyAccount = serde_json::from_str(&json.unwrap()).expect("Failed to deserialize EmptyAccount");
+        assert_eq!(deserialized.address, empty_account.address);
+        assert_eq!(deserialized.lamports, empty_account.lamports);
+        assert_eq!(deserialized.owner, empty_account.owner);
+        assert_eq!(deserialized.mint, empty_account.mint);
     }
 }

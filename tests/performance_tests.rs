@@ -1,4 +1,4 @@
-cuse std::sync::Arc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use serde::{Deserialize, Serialize};

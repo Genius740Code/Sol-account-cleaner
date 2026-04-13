@@ -3,6 +3,7 @@ mod tests {
     use crate::core::{SolanaRecoverError};
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
+    use std::str::FromStr;
     use chrono::Utc;
     use solana_account_decoder::UiAccountEncoding;
     use base64::{Engine as _, engine::general_purpose};

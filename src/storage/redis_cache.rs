@@ -329,6 +329,11 @@ mod tests {
             ttl_seconds: 60,
             max_size: 1000,
             cleanup_interval_seconds: 300,
+            enable_hierarchical_cache: false,
+            l1_cache_size: 100,
+            l2_cache_size: 200,
+            compression_threshold: 1024,
+            enable_metrics: false,
         };
         
         // This test requires Redis to be running

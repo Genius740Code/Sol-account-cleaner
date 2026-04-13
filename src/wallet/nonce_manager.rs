@@ -291,7 +291,7 @@ impl Default for NonceManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_sdk::{signature::Keypair, transaction::Transaction, message::Message};
+    use solana_sdk::{signature::Keypair, signature::Signer, transaction::Transaction, message::Message};
 
     #[tokio::test]
     async fn test_nonce_management() {

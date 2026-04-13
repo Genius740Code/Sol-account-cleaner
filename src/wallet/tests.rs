@@ -64,6 +64,7 @@ mod wallet_tests {
 #[cfg(test)]
 mod turnkey_tests {
     use super::*;
+    use crate::wallet::manager::WalletProvider;
 
     #[tokio::test]
     async fn test_turnkey_provider_creation() {
@@ -110,6 +111,7 @@ mod turnkey_tests {
 #[cfg(test)]
 mod phantom_tests {
     use super::*;
+    use crate::wallet::manager::WalletProvider;
 
     #[tokio::test]
     async fn test_phantom_provider_connection() {
@@ -135,7 +137,7 @@ mod phantom_tests {
         
         // Test transaction signing
         let test_transaction = vec![1, 2, 3, 4, 5];
-        let sign_result = provider.sign_transaction(&connection, &test_transaction).await;
+        let sign_result = provider.sign_transaction(&connection, &test_transaction, None).await;
         assert!(sign_result.is_ok());
         
         let signed_tx = sign_result.unwrap();
@@ -160,7 +162,7 @@ mod phantom_tests {
         
         // Test with empty transaction
         let empty_tx = vec![];
-        let sign_result = provider.sign_transaction(&connection, &empty_tx).await;
+        let sign_result = provider.sign_transaction(&connection, &empty_tx, None).await;
         assert!(sign_result.is_ok());
         
         // Test signature length validation
@@ -173,6 +175,7 @@ mod phantom_tests {
 mod solflare_tests {
     use super::*;
     use crate::wallet::solflare::{SolflareProvider, SolflareConfig};
+    use crate::wallet::manager::WalletProvider;
 
     #[tokio::test]
     async fn test_solflare_provider_connection() {
@@ -198,7 +201,7 @@ mod solflare_tests {
         
         // Test transaction signing
         let test_transaction = vec![1, 2, 3, 4, 5];
-        let sign_result = provider.sign_transaction(&connection, &test_transaction).await;
+        let sign_result = provider.sign_transaction(&connection, &test_transaction, None).await;
         assert!(sign_result.is_ok());
         
         let signed_tx = sign_result.unwrap();
