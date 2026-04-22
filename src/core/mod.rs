@@ -8,6 +8,8 @@ pub mod processor_metrics;
 pub mod recovery;
 pub mod scanner;
 pub mod types;
+pub mod adaptive_parallel_processor;
+pub mod optimized_scanner;
 
 #[cfg(test)]
 mod recovery_tests;
@@ -24,4 +26,7 @@ pub use parallel_processor::*;
 pub use processor::*;
 pub use processor_metrics::*;
 pub use recovery::*;
+pub use scanner::*;
 pub use error_handling::*;
+pub use adaptive_parallel_processor::*;
+pub use optimized_scanner::*;

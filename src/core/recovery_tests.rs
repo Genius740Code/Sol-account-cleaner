@@ -14,22 +14,25 @@ mod tests {
             min_balance_lamports: 1000,
             max_concurrent_recoveries: Some(5),
             priority_fee_lamports: 5000,
+            max_fee_lamports: 5_000_000,
+            confirmation_timeout_seconds: 120,
+            retry_attempts: 3,
         }
     }
 
     fn create_test_fee_structure() -> FeeStructure {
         FeeStructure {
-            fee_percentage_bps: 100, // 1%
-            min_fee_lamports: 5000,
-            max_fee_lamports: 1_000_000,
-            fee_waiver_threshold_lamports: 10_000,
+            percentage: 0.01, // 1%
+            minimum_lamports: 5000,
+            maximum_lamports: Some(1_000_000),
+            waive_below_lamports: Some(10_000),
             firm_wallet_address: Some("11111111111111111111111111111112".to_string()),
-            fee_waived: false,
         }
     }
 
     fn create_test_wallet_credentials() -> WalletCredentials {
         WalletCredentials {
+            wallet_type: WalletType::PrivateKey,
             credentials: WalletCredentialData::PrivateKey {
                 private_key: "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqYz4eg5vZ8LJjKxHn3".to_string(),
             },
@@ -111,6 +114,7 @@ mod tests {
                 "11111111111111111111111111111115".to_string(),
             ],
             max_fee_lamports: Some(100000),
+            priority_fee_lamports: Some(5000),
             wallet_connection_id: None,
             user_id: None,
             created_at: chrono::Utc::now(),
@@ -228,6 +232,7 @@ mod tests {
                 "11111111111111111111111111111115".to_string(),
             ],
             max_fee_lamports: Some(100000),
+            priority_fee_lamports: Some(5000),
             wallet_connection_id: None,
             user_id: None,
             created_at: chrono::Utc::now(),

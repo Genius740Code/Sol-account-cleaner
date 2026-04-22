@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::core::{SolanaRecoverError};
+    use crate::core::{SolanaRecoverError, WalletScanner, TokenAccountInfo, LAMPORTS_PER_SOL};
+    use crate::wallet::{WalletType};
+    use crate::rpc::ConnectionPoolTrait;
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
     use std::str::FromStr;
@@ -13,7 +15,10 @@ mod tests {
             pubkey: pubkey_str.to_string(),
             account: solana_client::rpc_response::RpcAccount {
                 lamports,
-                data: data.clone(),
+                data: solana_account_decoder::UiAccountData::Binary(
+                    general_purpose::STANDARD.encode(&data),
+                    solana_account_decoder::UiAccountEncoding::Base64
+                ),
                 owner: owner.to_string(),
                 executable: false,
                 rent_epoch: 0,
@@ -48,7 +53,10 @@ mod tests {
         let scanner = WalletScanner::new(Arc::new(MockConnectionPool::new()));
         
         let token_account = create_mock_token_account("TestTokenAccount", 1000000, 0);
-        let data_str = general_purpose::STANDARD.encode(&token_account.account.data);
+        let data_str = match &token_account.account.data {
+            solana_account_decoder::UiAccountData::Binary(data, _) => data.clone(),
+            _ => panic!("Expected binary data"),
+        };
         
         let result = scanner.parse_token_account_from_binary(&data_str, &UiAccountEncoding::Base64);
         assert!(result.is_ok());
@@ -63,7 +71,10 @@ mod tests {
         let scanner = WalletScanner::new(Arc::new(MockConnectionPool::new()));
         
         let token_account = create_mock_token_account("TestTokenAccount", 1000000, 1000000);
-        let data_str = bs58::encode(&token_account.account.data).into_string();
+        let data_str = match &token_account.account.data {
+            solana_account_decoder::UiAccountData::Binary(data, _) => data.clone(),
+            _ => panic!("Expected binary data"),
+        };
         
         let result = scanner.parse_token_account_from_binary(&data_str, &UiAccountEncoding::Base58);
         assert!(result.is_ok());
@@ -198,7 +209,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl crate::rpc::ConnectionPoolTrait for MockConnectionPool {
-        async fn get_client(&self) -> Result<Arc<crate::rpc::RpcClientWrapper>> {
+        async fn get_client(&self) -> Result<Arc<crate::rpc::RpcClientWrapper>, SolanaRecoverError> {
             // Return a mock client that will fail on any actual RPC call
             // This is fine for unit tests that don't need real RPC calls
             Err(SolanaRecoverError::NetworkError("Mock connection pool".to_string()))
@@ -224,7 +235,7 @@ mod tests {
     #[test]
     fn test_wallet_scanner_creation() {
         let mock_pool = Arc::new(MockConnectionPool::new());
-        let scanner = WalletScanner::new(mock_pool);
+        let _scanner = WalletScanner::new(mock_pool);
         
         // Scanner should be created successfully
         // We can't test much more without a real connection pool

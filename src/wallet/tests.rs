@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod wallet_tests {
     use super::*;
-    use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType, WalletConnection, ConnectionData, WalletProvider};
-    use crate::wallet::{WalletManager, WalletManagerConfig};
+    use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType, WalletConnection, ConnectionData, WalletProvider, WalletManagerConfig};
+    use crate::wallet::{WalletManager};
     use uuid::Uuid;
 
     #[tokio::test]

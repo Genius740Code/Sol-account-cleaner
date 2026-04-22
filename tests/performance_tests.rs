@@ -472,9 +472,9 @@ impl PerformanceTestSuite {
 
     /// Calculate resource usage metrics
     async fn calculate_resource_metrics(&self, memory_samples: &[f64], cpu_samples: &[f64]) -> Result<ResourceUsageMetrics, Box<dyn std::error::Error + Send + Sync>> {
-        let peak_memory = memory_samples.iter().fold(0.0, |a, &b| a.max(b));
+        let peak_memory = memory_samples.iter().fold(0.0_f64, |a, &b| a.max(b));
         let avg_memory = memory_samples.iter().sum::<f64>() / memory_samples.len() as f64;
-        let peak_cpu = cpu_samples.iter().fold(0.0, |a, &b| a.max(b));
+        let peak_cpu = cpu_samples.iter().fold(0.0_f64, |a, &b| a.max(b));
         let avg_cpu = cpu_samples.iter().sum::<f64>() / cpu_samples.len() as f64;
 
         Ok(ResourceUsageMetrics {
@@ -614,7 +614,7 @@ mod tests {
     #[tokio::test]
     async fn test_performance_test_creation() {
         let config = PerformanceTestConfig::default();
-        let test_suite = PerformanceTestSuite::new(config);
+        let _test_suite = PerformanceTestSuite::new(config);
         // Test creation succeeds
     }
 

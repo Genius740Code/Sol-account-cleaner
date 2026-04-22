@@ -110,6 +110,8 @@ impl AxumServer {
 impl IntoResponse for SolanaRecoverError {
     fn into_response(self) -> axum::response::Response {
         let (status, error_message) = match self {
+            SolanaRecoverError::RpcClientError(_) => (StatusCode::SERVICE_UNAVAILABLE, "RPC client error".to_string()),
+            SolanaRecoverError::RpcError(_) => (StatusCode::SERVICE_UNAVAILABLE, "RPC error".to_string()),
             SolanaRecoverError::RateLimitExceeded(_) => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded".to_string()),
             SolanaRecoverError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
             SolanaRecoverError::InvalidWalletAddress(_) => (StatusCode::BAD_REQUEST, "Invalid wallet address".to_string()),
@@ -132,7 +134,6 @@ impl IntoResponse for SolanaRecoverError {
             SolanaRecoverError::InvalidFeeStructure(_) => (StatusCode::BAD_REQUEST, "Invalid fee structure".to_string()),
             SolanaRecoverError::ConfigurationError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Configuration error".to_string()),
             SolanaRecoverError::IoError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "IO error".to_string()),
-            SolanaRecoverError::RpcClientError(_) => (StatusCode::SERVICE_UNAVAILABLE, "RPC client error".to_string()),
         };
 
         let body = Json(serde_json::json!({

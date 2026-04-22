@@ -568,7 +568,8 @@ mod tests {
     #[tokio::test]
     async fn test_dynamic_batch_sizer() {
         let monitor = Arc::new(ResourceMonitor::new());
-        let sizer = DynamicBatchSizer::new(100, Arc::clone(&monitor));
+        let monitor_trait: Arc<dyn ResourceMonitorTrait> = Arc::clone(&monitor) as Arc<dyn ResourceMonitorTrait>;
+        let sizer = DynamicBatchSizer::new(100, monitor_trait);
         
         // Test with low CPU usage
         monitor.update_cpu_usage(25.0);

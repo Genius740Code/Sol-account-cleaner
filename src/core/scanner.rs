@@ -247,7 +247,7 @@ impl WalletScanner {
         })
     }
 
-    async fn check_empty_account(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, wallet_address: &str) -> Result<Option<EmptyAccount>> {
+    pub async fn check_empty_account(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, wallet_address: &str) -> Result<Option<EmptyAccount>> {
         let account_pubkey_str = &keyed_account.pubkey;
         let account = &keyed_account.account;
         

@@ -350,7 +350,7 @@ impl LoadTestSuite {
         let end_time_chrono = chrono::Utc::now();
 
         // Collect and analyze results
-        let results = self.analyze_test_results(test_name, start_time, end_time, start_time_chrono, end_time_chrono).await?;
+        let results = Self::analyze_test_results(test_name, start_time, end_time, start_time_chrono, end_time_chrono).await?;
 
         Ok(results)
     }
@@ -406,7 +406,7 @@ impl LoadTestSuite {
 
         while start_time.elapsed() < test_duration {
             // Check if we can acquire a permit (simulating user activity)
-            if let Ok(permit) = semaphore.try_acquire_owned() {
+            if let Ok(permit) = semaphore.clone().try_acquire_owned() {
                 let results_collector = results_collector.clone();
                 let config = config.clone();
 
@@ -644,7 +644,7 @@ mod tests {
     #[tokio::test]
     async fn test_load_test_creation() {
         let config = LoadTestConfig::default();
-        let test_suite = LoadTestSuite::new(config);
+        let _test_suite = LoadTestSuite::new(config);
         // Test creation succeeds
     }
 

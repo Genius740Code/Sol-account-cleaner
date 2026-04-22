@@ -564,7 +564,7 @@ mod tests {
         let connection_pool = Arc::new(MockConnectionPool::new());
         let scanner = EnhancedWalletScanner::new(connection_pool).unwrap();
         
-        let report = scanner.get_comprehensive_report();
+        let report = scanner.get_comprehensive_report().await;
         
         assert!(report.get("timestamp").is_some());
         assert!(report.get("scanner_stats").is_some());

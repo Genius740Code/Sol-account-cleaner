@@ -5,6 +5,9 @@ pub enum SolanaRecoverError {
     #[error("RPC client error: {0}")]
     RpcClientError(String),
     
+    #[error("RPC error: {0}")]
+    RpcError(String),
+    
     #[error("Invalid wallet address: {0}")]
     InvalidWalletAddress(String),
     
@@ -76,6 +79,7 @@ impl Clone for SolanaRecoverError {
     fn clone(&self) -> Self {
         match self {
             SolanaRecoverError::RpcClientError(msg) => SolanaRecoverError::RpcClientError(msg.clone()),
+            SolanaRecoverError::RpcError(msg) => SolanaRecoverError::RpcError(msg.clone()),
             SolanaRecoverError::InvalidWalletAddress(msg) => SolanaRecoverError::InvalidWalletAddress(msg.clone()),
             SolanaRecoverError::RateLimitExceeded(msg) => SolanaRecoverError::RateLimitExceeded(msg.clone()),
             SolanaRecoverError::ConnectionPoolExhausted => SolanaRecoverError::ConnectionPoolExhausted,

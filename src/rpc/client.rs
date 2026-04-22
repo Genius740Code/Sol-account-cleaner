@@ -13,7 +13,7 @@ use std::str::FromStr;
 use tracing::{debug, warn};
 
 pub struct RpcClientWrapper {
-    client: Arc<RpcClient>,
+    pub client: Arc<RpcClient>,
     rate_limiter: Arc<dyn RateLimiter>,
     request_timeout: Duration,
     rent_cache: Cache<usize, u64>, // Cache for rent exemption queries

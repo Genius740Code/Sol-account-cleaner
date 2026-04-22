@@ -218,7 +218,7 @@ async fn handle_get_recovery_status(request: &str, state: &ApiState) -> String {
     }
 }
 
-fn extract_json_from_request(request: &str) -> &str {
+pub fn extract_json_from_request(request: &str) -> &str {
     // Find JSON body in HTTP request
     if let Some(start) = request.find("{") {
         if let Some(end) = request.rfind("}") {
@@ -231,7 +231,7 @@ fn extract_json_from_request(request: &str) -> &str {
     }
 }
 
-fn create_json_response<T: Serialize>(data: &T) -> String {
+pub fn create_json_response<T: Serialize>(data: &T) -> String {
     let json_body = serde_json::to_string(data).unwrap_or_default();
     format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",

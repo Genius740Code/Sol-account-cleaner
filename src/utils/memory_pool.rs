@@ -82,6 +82,20 @@ where
         }
     }
 
+    pub fn try_get(&self) -> Option<T> {
+        let mut pool = self.pool.write();
+        let mut stats = self.stats.write();
+        
+        if let Some(item) = pool.pop() {
+            stats.hits += 1;
+            stats.current_size = pool.len();
+            Some(item)
+        } else {
+            stats.misses += 1;
+            None
+        }
+    }
+
     /// Get memory pool statistics
     pub fn get_stats(&self) -> MemoryPoolStats {
         self.stats.read().clone()
@@ -238,6 +252,26 @@ impl MemoryManager {
     pub fn deallocate(&self, size: usize) {
         let mut total = self.total_allocated.write();
         *total = total.saturating_sub(size);
+    }
+
+    pub fn get_buffer_blocking(&self) -> Vec<u8> {
+        // Get a buffer from the pool or create a new one
+        let pool = self.get_pool::<Vec<u8>>("buffer", 1024);
+        pool.try_get().unwrap_or_else(|| Vec::with_capacity(1024))
+    }
+
+    pub async fn maybe_gc(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let should_gc = {
+            let last_gc = self.last_gc.read();
+            last_gc.elapsed() > self.gc_interval
+        };
+
+        if should_gc {
+            *self.last_gc.write() = Instant::now();
+            info!("Triggering periodic garbage collection");
+            self.garbage_collect();
+        }
+        Ok(())
     }
 
     pub fn garbage_collect(&self) {

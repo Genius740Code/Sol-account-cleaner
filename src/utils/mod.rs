@@ -12,6 +12,7 @@ pub mod enhanced_metrics;
 pub mod http2_client;
 pub mod hardware_encryption;
 pub mod async_audit_logger;
+pub mod object_pool;
 
 // Re-export specific items to avoid conflicts
 pub use metrics::MetricsConfig as MetricsCollectorConfig;
@@ -28,3 +29,4 @@ pub use enhanced_metrics::{EnhancedMetricsCollector, EnhancedMetricsConfig, Comp
 pub use http2_client::Http2Client;
 pub use hardware_encryption::{HardwareEncryptionEngine, EncryptionConfig};
 pub use async_audit_logger::AsyncAuditLogger;
+pub use object_pool::{ObjectPool, PooledObject, MemoryManager as ObjectMemoryManager, PoolConfig, PoolMetrics, MemoryManagerConfig as ObjectMemoryManagerConfig, MemoryUsageStats};

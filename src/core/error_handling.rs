@@ -648,7 +648,7 @@ mod tests {
             Box::pin(async move {
                 attempt_count += 1;
                 if attempt_count < 3 {
-                    Err("temporary error")
+                    Err::<&str, SolanaRecoverError>(SolanaRecoverError::NetworkError("temporary error".to_string()))
                 } else {
                     Ok("success")
                 }
@@ -671,14 +671,14 @@ mod tests {
         
         // First failure
         let result = breaker.execute(|| {
-            Box::pin(async { Err::<(), _>("error") })
+            Box::pin(async { Err::<(), SolanaRecoverError>(SolanaRecoverError::NetworkError("error".to_string())) })
         }).await;
         assert!(result.is_err());
         assert_eq!(breaker.get_state().await, CircuitBreakerState::Closed);
         
         // Second failure - should open circuit
         let result = breaker.execute(|| {
-            Box::pin(async { Err::<(), _>("error") })
+            Box::pin(async { Err::<(), SolanaRecoverError>(SolanaRecoverError::NetworkError("error".to_string())) })
         }).await;
         assert!(result.is_err());
         assert_eq!(breaker.get_state().await, CircuitBreakerState::Open);
