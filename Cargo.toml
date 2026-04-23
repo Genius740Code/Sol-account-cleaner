@@ -1,9 +1,11 @@
 [package]
 name = "solana-recover"
-version = "1.0.4"
+version = "1.0.41"
 edition = "2021"
 description = "A comprehensive Solana wallet recovery and account management tool"
 license = "MIT"
+repository = "https://github.com/Genius740Code/Sol-account-cleaner"
+homepage = "https://github.com/Genius740Code/Sol-account-cleaner"
 
 [features]
 default = ["scanner", "recovery"]

@@ -6,7 +6,7 @@
 
 A high-performance Solana wallet scanner and SOL recovery library for Rust. This crate provides a simple yet powerful API for scanning Solana wallets to find empty token accounts and recover SOL from them.
 
-## 🚀 Features
+## Features
 
 - **Simple API**: Easy-to-use functions for quick wallet scanning
 - **High Performance**: Optimized for scanning multiple wallets concurrently
@@ -15,13 +15,13 @@ A high-performance Solana wallet scanner and SOL recovery library for Rust. This
 - **Async First**: Built on tokio for efficient asynchronous operations
 - **Extensible**: Modular design allows for custom implementations
 
-## 📦 Installation
+## Installation
 
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-solana-recover = "1.0.2"
+solana-recover = "1.0.41"
 ```
 
 ### Feature Flags
@@ -30,16 +30,16 @@ Use only the features you need to keep your binary small:
 
 ```toml
 # Default: scanner + client
-solana-recover = "1.0.2"
+solana-recover = "1.0.41"
 
 # Minimal - just core types
-solana-recover = { version = "1.0.2", default-features = false }
+solana-recover = { version = "1.0.41", default-features = false }
 
 # Scanner functionality only
-solana-recover = { version = "1.0.2", default-features = false, features = ["scanner"] }
+solana-recover = { version = "1.0.41", default-features = false, features = ["scanner"] }
 
 # Full feature set
-solana-recover = { version = "1.0.2", features = ["full"] }
+solana-recover = { version = "1.0.41", features = ["full"] }
 ```
 
 Available features:
@@ -53,7 +53,7 @@ Available features:
 - `config` - Configuration file support
 - `full` - Enables all features
 
-## 🏁 Quick Start
+## Quick Start
 
 ### Basic Wallet Scan
 
@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -172,7 +172,7 @@ default_percentage = 0.15
 minimum_lamports = 1000000
 ```
 
-## 📊 Examples
+## Examples
 
 ### Command Line Interface
 
@@ -351,7 +351,7 @@ async fn scan_wallet_handler(Json(payload): Json<Value>) -> Result<Json<Value>, 
 }
 ```
 
-## 🔍 Error Handling
+## Error Handling
 
 The library provides comprehensive error handling with the `SolanaRecoverError` enum:
 
@@ -375,7 +375,7 @@ async fn main() {
 }
 ```
 
-## 🧪 Testing
+## Testing
 
 Run the test suite:
 
@@ -389,78 +389,28 @@ cargo test --features "full"
 cargo test --test integration
 ```
 
-## 📚 Documentation
+## Documentation
 
 - [API Documentation](https://docs.rs/solana-recover)
-- [Examples](https://github.com/your-org/solana-recover/tree/main/examples)
-- [Guide](https://github.com/your-org/solana-recover/wiki)
+- [Examples](https://github.com/Genius740Code/Sol-account-cleaner/tree/main/examples)
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ### Development Setup
 
 ```bash
-git clone https://github.com/your-org/solana-recover.git
-cd solana-recover
+git clone https://github.com/Genius740Code/Sol-account-cleaner.git
+cd Sol-account-cleaner
 cargo build
 cargo test
 ```
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
-
-- 📧 Email: support@solana-recover.com
-- 🐛 Issues: [GitHub Issues](https://github.com/your-org/solana-recover/issues)
-- 💬 Discord: [Join our community](https://discord.gg/solana-recover)
-
-## 🙏 Acknowledgments
-
-- [Solana Labs](https://solana.com/) for the amazing blockchain platform
-- The Rust community for excellent tooling and libraries
-
-## ❓ Frequently Asked Questions
-
-### Does the tool only close accounts with active positions or all accounts?
-
-The tool specifically targets **empty token accounts** only. Here's what that means:
-
-- **Empty Accounts**: Token accounts with a balance of 0 tokens but still holding rent exemption SOL (typically 2.228268 SOL per account)
-- **Active Positions**: Accounts with non-zero token balances are **never** closed or touched
-- **Safety First**: The scanner verifies each account has exactly 0 tokens before including it in recovery
-
-**What gets recovered:**
-- Rent exemption SOL from empty token accounts
-- Transaction fees are deducted from the recovered amount
-- Only accounts with 0 token balance are eligible
-
-**What's safe:**
-- Accounts with active token positions (any non-zero balance)
-- SOL accounts (native SOL accounts)
-- Accounts with delegated tokens or active stakes
-- NFTs or other assets with non-zero balances
-
-### Is it safe to use private keys with this tool?
-
-Yes, but with important considerations:
-
-- Private keys are only used to derive the public wallet address for scanning
-- For recovery operations, private keys are used to sign transactions locally
-- Keys are never transmitted to external services
-- Always ensure you're using a secure environment and backup your keys
-
-### What happens to the tokens in empty accounts?
-
-Empty accounts by definition have 0 tokens. The "empty" refers to the token balance being 0, not the account being completely devoid of value. These accounts still hold rent exemption SOL that can be recovered.
-
-### Can I recover SOL from accounts with small token balances?
-
-No. The tool only processes accounts with exactly 0 token balance. Accounts with any non-zero token balance (even very small amounts) are skipped to preserve your token positions.
-
 ---
 
-**Built with ❤️ for the Solana ecosystem**
+Built for the Solana ecosystem
