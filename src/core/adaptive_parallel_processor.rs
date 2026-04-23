@@ -535,8 +535,6 @@ impl AdaptiveParallelProcessor {
 /// Resource monitor for system load tracking
 pub struct ResourceMonitor {
     enabled: bool,
-    last_cpu_usage: Arc<Mutex<Option<f64>>>,
-    last_memory_usage: Arc<Mutex<Option<f64>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -551,8 +549,6 @@ impl ResourceMonitor {
     pub fn new(enabled: bool) -> Self {
         Self {
             enabled,
-            last_cpu_usage: Arc::new(Mutex::new(None)),
-            last_memory_usage: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -574,18 +570,14 @@ impl ResourceMonitor {
 
 /// Dynamic batch sizer for adaptive batch processing
 pub struct DynamicBatchSizer {
-    base_size: usize,
     current_size: Arc<AtomicUsize>,
-    adjustment_factor: f64,
     last_adjustment: Arc<Mutex<Option<Instant>>>,
 }
 
 impl DynamicBatchSizer {
     pub fn new() -> Self {
         Self {
-            base_size: 50,
             current_size: Arc::new(AtomicUsize::new(50)),
-            adjustment_factor: 0.2,
             last_adjustment: Arc::new(Mutex::new(None)),
         }
     }

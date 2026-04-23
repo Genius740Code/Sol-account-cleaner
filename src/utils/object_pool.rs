@@ -149,12 +149,11 @@ where
         
         PooledObject {
             object: Some(object),
-            checkout_time: start_time,
         }
     }
 
     /// Return an object to the pool
-    async fn return_object(&self, object: T, checkout_time: Instant) {
+    async fn return_object(&self, object: T) {
         let current_size = self.current_size.load(std::sync::atomic::Ordering::Relaxed);
         
         if current_size < self.max_size {
@@ -165,8 +164,7 @@ where
             // Update metrics
             if self.config.enable_metrics {
                 let mut metrics = self.metrics.write().await;
-                let lifetime = checkout_time.elapsed().as_millis() as f64;
-                self.update_lifetime_metrics(&mut metrics, lifetime);
+                // Note: lifetime tracking disabled since checkout_time was removed
             }
         } else {
             // Pool is full, discard the object
@@ -270,7 +268,6 @@ where
 /// Pooled object that needs to be manually returned to pool
 pub struct PooledObject<T> {
     object: Option<T>,
-    checkout_time: Instant,
 }
 
 impl<T> PooledObject<T> {
@@ -488,7 +485,6 @@ impl MemoryManager {
         // In a real implementation, you might use a blocking pool or tokio::block_on
         PooledObject {
             object: Some(Vec::with_capacity(4096)),
-            checkout_time: Instant::now(),
         }
     }
 

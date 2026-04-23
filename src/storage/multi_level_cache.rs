@@ -151,11 +151,9 @@ pub struct PersistentCache {
 }
 
 #[derive(Debug, Clone)]
-struct CompressedCachedAccount {
+pub struct CompressedCachedAccount {
     data: Vec<u8>, // Compressed serialized data
     timestamp: Instant,
-    priority: CachePriority,
-    original_size: usize,
     compressed_size: usize,
 }
 
@@ -523,8 +521,6 @@ impl MultiLevelCache {
         Ok(CompressedCachedAccount {
             data: compressed.clone(),
             timestamp: account.timestamp,
-            priority: account.priority,
-            original_size: serialized.len(),
             compressed_size: compressed.len(),
         })
     }

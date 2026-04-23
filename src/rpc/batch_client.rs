@@ -422,27 +422,28 @@ impl BatchRpcClient {
 
 /// Extension trait for RpcClientWrapper to support batch operations
 pub trait BatchRpcOperations {
-    async fn get_multiple_accounts(
+    fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
-    ) -> Result<Vec<Option<UiAccount>>>;
+    ) -> impl std::future::Future<Output = Result<Vec<Option<UiAccount>>>> + Send;
     
-    async fn get_token_accounts_with_config(
+    fn get_token_accounts_with_config(
         &self,
         pubkey: &Pubkey,
-    ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>>;
+    ) -> impl std::future::Future<Output = Result<Vec<solana_client::rpc_response::RpcKeyedAccount>>> + Send;
     
-    async fn get_system_accounts_with_config(
+    fn get_system_accounts_with_config(
         &self,
         pubkey: &Pubkey,
-    ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>>;
+    ) -> impl std::future::Future<Output = Result<Vec<solana_client::rpc_response::RpcKeyedAccount>>> + Send;
 }
 
 impl BatchRpcOperations for RpcClientWrapper {
-    async fn get_multiple_accounts(
+    fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
-    ) -> Result<Vec<Option<UiAccount>>> {
+    ) -> impl std::future::Future<Output = Result<Vec<Option<UiAccount>>>> + Send {
+        async move {
         // Convert pubkeys to strings for the RPC call
         let pubkey_strings: Vec<String> = pubkeys
             .iter()
@@ -475,12 +476,14 @@ impl BatchRpcOperations for RpcClientWrapper {
             .collect();
         
         Ok(ui_accounts)
+        }
     }
 
-    async fn get_token_accounts_with_config(
+    fn get_token_accounts_with_config(
         &self,
         pubkey: &Pubkey,
-    ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+    ) -> impl std::future::Future<Output = Result<Vec<solana_client::rpc_response::RpcKeyedAccount>>> + Send {
+        async move {
         // Get all token accounts owned by this wallet
         let token_mints = vec![
             spl_token::id().to_string(),
@@ -533,12 +536,14 @@ impl BatchRpcOperations for RpcClientWrapper {
         }
         
         Ok(all_token_accounts)
+        }
     }
 
-    async fn get_system_accounts_with_config(
+    fn get_system_accounts_with_config(
         &self,
         pubkey: &Pubkey,
-    ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+    ) -> impl std::future::Future<Output = Result<Vec<solana_client::rpc_response::RpcKeyedAccount>>> + Send {
+        async move {
         // Get system accounts owned by this wallet
         let accounts = self.client.get_program_accounts_with_config(
             &solana_program::system_program::id(),
@@ -578,5 +583,6 @@ impl BatchRpcOperations for RpcClientWrapper {
             .collect();
         
         Ok(rpc_accounts)
+        }
     }
 }
