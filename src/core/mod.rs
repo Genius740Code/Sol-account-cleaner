@@ -10,6 +10,7 @@ pub mod scanner;
 pub mod types;
 pub mod adaptive_parallel_processor;
 pub mod optimized_scanner;
+pub mod ultra_fast_scanner;
 
 #[cfg(test)]
 mod recovery_tests;
@@ -29,3 +30,4 @@ pub use scanner::*;
 pub use error_handling::*;
 pub use adaptive_parallel_processor::*;
 pub use optimized_scanner::*;
+pub use ultra_fast_scanner::*;

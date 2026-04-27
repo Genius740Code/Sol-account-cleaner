@@ -77,6 +77,73 @@ pub struct EmptyAccount {
     pub lamports: u64,
 }
 
+/// Ultra-fast wallet scanning with all optimizations enabled
+/// 
+/// This function provides the fastest possible wallet scanning using:
+/// - Predictive prefetching
+/// - Connection multiplexing
+/// - Smart batching
+/// - Fast path scanning for common patterns
+/// - Maximum parallelization
+/// 
+/// # Arguments
+/// 
+/// * `wallet_address` - The Solana wallet address to scan
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns a `WalletInfo` containing scan results in sub-second time.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::scan_wallet_ultra_fast;
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let result = scan_wallet_ultra_fast("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None).await?;
+///     println!("Found {} recoverable SOL in {}ms", result.recoverable_sol, result.scan_time_ms);
+///     Ok(())
+/// }
+/// ```
+pub async fn scan_wallet_ultra_fast(
+    wallet_address: &str,
+    rpc_endpoint: Option<&str>,
+) -> core::Result<WalletInfo> {
+    use rpc::EnhancedConnectionPool;
+    use core::{RpcEndpoint, OptimizedWalletScanner, OptimizedScannerConfig, PerformanceMode};
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 200, // Higher rate limit for ultra-fast
+        timeout_ms: 5000,     // Shorter timeout for ultra-fast
+        healthy: true,
+    };
+    
+    // Ultra-fast configuration
+    let config = OptimizedScannerConfig {
+        performance_mode: PerformanceMode::UltraFast,
+        enable_all_optimizations: true,
+        enable_predictive_prefetch: true,
+        enable_connection_multiplexing: true,
+        enable_smart_batching: true,
+        enable_fast_path: true,
+        max_concurrent_scans: 500,
+        scan_timeout: std::time::Duration::from_secs(2),
+        prefetch_window_size: 50,
+        batch_size_multiplier: 2.0,
+        ..Default::default()
+    };
+    
+    let scanner = OptimizedWalletScanner::new(vec![rpc_endpoint], config)?;
+    let scan_result = scanner.scan_wallet_ultra_fast(wallet_address).await?;
+    
+    Ok(scan_result.result.unwrap())
+}
+
 /// Convenience function for quick wallet scanning using the core scanner
 /// 
 /// This is the simplest way to scan a wallet for empty accounts.

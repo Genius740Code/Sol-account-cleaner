@@ -1,7 +1,7 @@
 //! Simple CLI for the solana-recover crate
 
 use clap::{Parser, Subcommand};
-use solana_recover::{scan_wallet, recover_sol, WalletInfo, RecoveryRequest};
+use solana_recover::{scan_wallet_ultra_fast, scan_wallet, recover_sol, WalletInfo, RecoveryRequest};
 use solana_recover::wallet::{WalletManager, WalletCredentials, WalletType, WalletCredentialData};
 use solana_sdk::signature::{Signer, SeedDerivable};
 use std::io::{self, Write};
@@ -106,10 +106,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!();
 
         let start_time = std::time::Instant::now();
-        let result = scan_wallet(&wallet_address, None).await?;
+        let result = scan_wallet_ultra_fast(&wallet_address, None).await?;
         let elapsed = start_time.elapsed();
 
-        print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
+        print!("✓ Ultra-fast scan completed in {}ms\n", elapsed.as_millis());
         print_scan_result(&result, cli.dev);
 
         // Auto-reclaim if SOL is available - no confirmation needed for private key
@@ -184,10 +184,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!();
 
         let start_time = std::time::Instant::now();
-        let result = scan_wallet(wallet_address, None).await?;
+        let result = scan_wallet_ultra_fast(wallet_address, None).await?;
         let elapsed = start_time.elapsed();
 
-        print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
+        print!("✓ Ultra-fast scan completed in {}ms\n", elapsed.as_millis());
         print_scan_result(&result, cli.dev);
     }
 
@@ -203,10 +203,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
 
             let start_time = std::time::Instant::now();
-            let result = scan_wallet(&address, rpc_endpoint.as_deref()).await?;
+            let result = scan_wallet_ultra_fast(&address, rpc_endpoint.as_deref()).await?;
             let elapsed = start_time.elapsed();
 
-            print!("✓ Scan completed in {}ms\n", elapsed.as_millis());
+            print!("✓ Ultra-fast scan completed in {}ms\n", elapsed.as_millis());
             print_scan_result(&result, dev);
         }
         Some(Commands::Show { targets, rpc_endpoint, dev }) => {
@@ -374,7 +374,7 @@ async fn calculate_total_claimable(
             wallet.clone()
         };
         
-        match scan_wallet(&scan_address, rpc_endpoint).await {
+        match scan_wallet_ultra_fast(&scan_address, rpc_endpoint).await {
             Ok(result) => {
                 total_recoverable += result.recoverable_sol;
                 wallet_results.push((scan_address, result.clone()));
@@ -424,7 +424,7 @@ async fn reclaim_sol_from_targets(
         };
         
         // First scan to get empty accounts
-        match scan_wallet(&scan_address, rpc_endpoint).await {
+        match scan_wallet_ultra_fast(&scan_address, rpc_endpoint).await {
             Ok(scan_result) => {
                 if scan_result.recoverable_sol > 0.0 {
                     // Create recovery request

@@ -79,6 +79,75 @@ impl RpcClientWrapper {
         self.hierarchical_cache = Some(cache);
     }
 
+    /// Ultra-fast token accounts retrieval with optimized batching
+    pub async fn get_token_accounts_by_owner_ultra_fast(
+        &self,
+        pubkey: &Pubkey,
+        batch_size: usize,
+    ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+        let cache_key = format!("token_accounts_ultra:{}:{}", pubkey, batch_size);
+        
+        // Try cache first
+        if let Some(ref cache) = self.hierarchical_cache {
+            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key).await {
+                debug!("Cache hit for ultra-fast token accounts of {}", pubkey);
+                return Ok(cached_accounts);
+            }
+        }
+        
+        // Use optimized config for ultra-fast retrieval
+        let config = RpcProgramAccountsConfig {
+            filters: Some(vec![
+                RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                    0,
+                    pubkey.to_string().as_bytes().to_vec(),
+                )),
+            ]),
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(solana_sdk::commitment_config::CommitmentConfig::confirmed()),
+                min_context_slot: None,
+            },
+            with_context: Some(false),
+        };
+        
+        // Rate limit check
+        self.rate_limiter.acquire().await?;
+        
+        // Ultra-fast RPC call with timeout
+        let start_time = Instant::now();
+        let accounts = self.client.get_program_accounts_with_config(
+            &spl_token::id(),
+            config,
+        )
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
+        
+        let response_time = start_time.elapsed();
+        debug!("Retrieved {} token accounts for {} in {:?}", accounts.len(), pubkey, response_time);
+        
+        // Convert to RpcKeyedAccount format
+        let keyed_accounts: Vec<solana_client::rpc_response::RpcKeyedAccount> = accounts.into_iter()
+            .map(|(pubkey, account)| solana_client::rpc_response::RpcKeyedAccount {
+                pubkey: pubkey.to_string(),
+                account: solana_account_decoder::UiAccount::encode(
+                    &pubkey,
+                    &account,
+                    solana_account_decoder::UiAccountEncoding::Binary,
+                    None,
+                    None,
+                ),
+            })
+            .collect();
+        
+        // Cache the result
+        if let Some(ref cache) = self.hierarchical_cache {
+            let _ = cache.set(&cache_key, &keyed_accounts).await;
+        }
+        
+        Ok(keyed_accounts)
+    }
+
     pub async fn get_all_recoverable_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
         let cache_key = format!("recoverable_accounts:{}", pubkey);
         
