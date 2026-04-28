@@ -1,5 +1,5 @@
 use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, ScanStatus, Result, FeeStructure, SolanaRecoverError};
-use crate::core::parallel_processor::IntelligentParallelProcessor;
+use crate::core::adaptive_parallel_processor::AdaptiveParallelProcessor;
 use crate::core::processor_metrics::ProcessorMetrics;
 use crate::rpc::ConnectionPool;
 use rayon::prelude::*;
@@ -23,7 +23,8 @@ pub struct BatchProcessor {
     retry_attempts: u32,
     #[allow(dead_code)]
     retry_delay_ms: u64,
-    intelligent_processor: Option<Arc<IntelligentParallelProcessor>>,
+    intelligent_processor: Option<Arc<AdaptiveParallelProcessor>>,
+    config: ProcessorConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -57,10 +58,20 @@ impl BatchProcessor {
         config: ProcessorConfig,
     ) -> Result<Self> {
         let intelligent_processor = if config.enable_intelligent_processing {
-            Some(Arc::new(IntelligentParallelProcessor::new(
+            let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
+                max_workers: config.num_workers.unwrap_or(4),
+                max_concurrent_tasks: config.max_concurrent_wallets,
+                work_stealing_enabled: true,
+                cpu_affinity_enabled: false,
+                adaptive_batching: true,
+                resource_monitoring: true,
+                load_balancing_strategy: crate::core::adaptive_parallel_processor::LoadBalancingStrategy::WorkStealing,
+                task_timeout: std::time::Duration::from_secs(30),
+                worker_idle_timeout: std::time::Duration::from_secs(60),
+            };
+            Some(Arc::new(AdaptiveParallelProcessor::new(
                 scanner.clone(),
-                config.num_workers,
-                config.max_concurrent_wallets,
+                processor_config,
             )?))
         } else {
             None
@@ -75,11 +86,13 @@ impl BatchProcessor {
             retry_attempts: config.retry_attempts,
             retry_delay_ms: config.retry_delay_ms,
             intelligent_processor,
+            config,
         })
     }
 
     pub fn new_simple(connection_pool: Arc<ConnectionPool>, max_concurrent_scans: usize) -> Self {
         let scanner = Arc::new(crate::core::scanner::WalletScanner::new(connection_pool));
+        let config = ProcessorConfig::default();
         Self {
             scanner,
             cache_manager: None,
@@ -89,6 +102,7 @@ impl BatchProcessor {
             retry_attempts: 3,
             retry_delay_ms: 1000,
             intelligent_processor: None,
+            config,
         }
     }
 
@@ -100,13 +114,24 @@ impl BatchProcessor {
             info!("Using intelligent parallel processor for batch of {} wallets", request.wallet_addresses.len());
             // Note: This requires a mutable processor, so we need to handle this differently
             // For now, we'll clone the processor or use a different approach
-            let mut processor_clone = IntelligentParallelProcessor::new(
-                processor.scanner.clone(),
-                Some(processor.max_workers),
-                processor.semaphore.available_permits(),
+            // Use adaptive parallel processor with default config
+            let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
+                max_workers: 4,
+                max_concurrent_tasks: self.config.max_concurrent_wallets,
+                work_stealing_enabled: true,
+                cpu_affinity_enabled: false,
+                adaptive_batching: true,
+                resource_monitoring: true,
+                load_balancing_strategy: crate::core::adaptive_parallel_processor::LoadBalancingStrategy::WorkStealing,
+                task_timeout: std::time::Duration::from_secs(30),
+                worker_idle_timeout: std::time::Duration::from_secs(60),
+            };
+            let mut processor_clone = AdaptiveParallelProcessor::new(
+                self.scanner.clone(),
+                processor_config,
             ).map_err(|e| SolanaRecoverError::InternalError(format!("Failed to create processor clone: {}", e)))?;
             
-            let batch_result = processor_clone.process_batch_intelligently(request).await?;
+            let batch_result = processor_clone.process_batch_adaptive(request).await?;
             return Ok(batch_result);
         } else {
             // Legacy processing with work-stealing
@@ -147,8 +172,12 @@ impl BatchProcessor {
                                         wallet_address: "unknown".to_string(), // Will be set properly
                                         status: ScanStatus::Failed,
                                         result: None,
-                                        error: Some(e.to_string()),
+                                        empty_accounts_found: 0,
+                                        recoverable_sol: 0.0,
+                                        scan_time_ms: 0,
                                         created_at: Utc::now(),
+                                        completed_at: Some(Utc::now()),
+                                        error_message: Some(e.to_string()),
                                     });
                                 }
                             }
@@ -181,7 +210,7 @@ impl BatchProcessor {
             let duration_ms = start_time.elapsed().as_millis() as u64;
 
             return Ok(BatchScanResult {
-                id: request.id,
+                request_id: request.id,
                 batch_id: Some(request.id.to_string()),
                 total_wallets: request.wallet_addresses.len(),
                 successful_scans: completed_wallets,
@@ -194,6 +223,7 @@ impl BatchProcessor {
                 created_at: request.created_at,
                 completed_at: Some(Utc::now()),
                 duration_ms: Some(duration_ms),
+                scan_time_ms: duration_ms,
             });
         }
     }
@@ -229,8 +259,12 @@ impl BatchProcessor {
                                 wallet_address: wallet_addr,
                                 status: ScanStatus::Failed,
                                 result: None,
-                                error: Some(e.to_string()),
+                                empty_accounts_found: 0,
+                                recoverable_sol: 0.0,
+                                scan_time_ms: 0,
                                 created_at: Utc::now(),
+                                completed_at: Some(Utc::now()),
+                                error_message: Some(e.to_string()),
                             };
                             let _ = tx.send(error_result); // Ignore send errors
                         }
@@ -259,9 +293,9 @@ impl BatchProcessor {
     }
     
     /// Get resource metrics from intelligent processor
-    pub async fn get_resource_metrics(&self) -> Option<crate::core::parallel_processor::ResourceMetrics> {
+    pub async fn get_resource_metrics(&self) -> Option<crate::core::adaptive_parallel_processor::ProcessorMetrics> {
         if let Some(processor) = &self.intelligent_processor {
-            Some(processor.get_resource_metrics().await)
+            Some(processor.get_metrics().await)
         } else {
             None
         }

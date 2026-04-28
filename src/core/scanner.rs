@@ -1,5 +1,5 @@
 use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
-use crate::core::parallel_processor::IntelligentParallelProcessor;
+use crate::core::adaptive_parallel_processor::AdaptiveParallelProcessor;
 use crate::rpc::{ConnectionPoolTrait};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 #[derive(Clone)]
 pub struct WalletScanner {
     connection_pool: Arc<dyn ConnectionPoolTrait>,
-    parallel_processor: Option<Arc<IntelligentParallelProcessor>>,
+    parallel_processor: Option<Arc<AdaptiveParallelProcessor>>,
 }
 
 impl WalletScanner {
@@ -54,10 +54,20 @@ impl WalletScanner {
             parallel_processor: None,
         };
         
-        let parallel_processor = Arc::new(IntelligentParallelProcessor::new(
+        let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
+            max_workers: max_workers.unwrap_or(4),
+            max_concurrent_tasks: max_concurrent_tasks,
+            work_stealing_enabled: true,
+            cpu_affinity_enabled: false,
+            adaptive_batching: true,
+            resource_monitoring: true,
+            load_balancing_strategy: crate::core::adaptive_parallel_processor::LoadBalancingStrategy::WorkStealing,
+            task_timeout: std::time::Duration::from_secs(30),
+            worker_idle_timeout: std::time::Duration::from_secs(60),
+        };
+        let parallel_processor = Arc::new(AdaptiveParallelProcessor::new(
             Arc::new(scanner.clone()),
-            max_workers,
-            max_concurrent_tasks,
+            processor_config,
         )?);
         
         Ok(Self {
@@ -70,12 +80,22 @@ impl WalletScanner {
         match &mut self.parallel_processor {
             Some(processor) => {
                 // Create a new processor for this batch since we can't modify the Arc
-                let mut temp_processor = IntelligentParallelProcessor::new(
-                    processor.scanner.clone(),
-                    Some(processor.max_workers),
-                    processor.semaphore.available_permits(),
+                let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
+                    max_workers: 4,
+                    max_concurrent_tasks: 100,
+                    work_stealing_enabled: true,
+                    cpu_affinity_enabled: false,
+                    adaptive_batching: true,
+                    resource_monitoring: true,
+                    load_balancing_strategy: crate::core::adaptive_parallel_processor::LoadBalancingStrategy::WorkStealing,
+                    task_timeout: std::time::Duration::from_secs(30),
+                    worker_idle_timeout: std::time::Duration::from_secs(60),
+                };
+                let mut temp_processor = AdaptiveParallelProcessor::new(
+                    Arc::new(crate::core::scanner::WalletScanner::new(self.connection_pool.clone())),
+                    processor_config,
                 )?;
-                temp_processor.process_batch_intelligently(request).await
+                temp_processor.process_batch_adaptive(request).await
             }
             None => {
                 // Fallback to sequential processing if parallel processor not initialized
@@ -111,8 +131,12 @@ impl WalletScanner {
                         wallet_address: wallet_address.clone(),
                         status: ScanStatus::Failed,
                         result: None,
-                        error: Some(e.to_string()),
+                        empty_accounts_found: 0,
+                        recoverable_sol: 0.0,
+                        scan_time_ms: 0,
                         created_at: Utc::now(),
+                        completed_at: Some(Utc::now()),
+                        error_message: Some(e.to_string()),
                     });
                 }
             }
@@ -126,7 +150,7 @@ impl WalletScanner {
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
         Ok(BatchScanResult {
-            id: request.id,
+            request_id: request.id,
             batch_id: Some(request.id.to_string()),
             total_wallets: request.wallet_addresses.len(),
             successful_scans,
@@ -139,6 +163,7 @@ impl WalletScanner {
             created_at: request.created_at,
             completed_at: Some(Utc::now()),
             duration_ms: Some(duration_ms),
+            scan_time_ms: duration_ms,
         })
     }
 
@@ -151,8 +176,12 @@ impl WalletScanner {
             wallet_address: wallet_address.to_string(),
             status: ScanStatus::InProgress,
             result: None,
-            error: None,
+            empty_accounts_found: 0,
+            recoverable_sol: 0.0,
+            scan_time_ms: 0,
             created_at: Utc::now(),
+            completed_at: None,
+            error_message: None,
         };
 
         match self.scan_wallet_internal(wallet_address).await {
@@ -168,7 +197,7 @@ impl WalletScanner {
             Err(e) => {
                 let mut result = scan_result;
                 result.status = ScanStatus::Failed;
-                result.error = Some(e.to_string());
+                result.error_message = Some(e.to_string());
                 Ok(result)
             }
         }

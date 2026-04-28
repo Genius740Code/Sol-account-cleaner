@@ -178,7 +178,7 @@ impl PersistenceManager for SqlitePersistenceManager {
         let wallet_address = result.wallet_address.clone();
         let status = serde_json::to_string(&result.status).unwrap();
         let result_data = Some(result_json);
-        let error = result.error.clone();
+        let error = result.error_message.clone();
         let created_at = result.created_at.to_rfc3339();
 
         task::spawn_blocking(move || -> Result<()> {

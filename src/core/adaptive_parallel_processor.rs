@@ -204,7 +204,7 @@ impl AdaptiveParallelProcessor {
         let estimated_fee_sol = total_recoverable_sol * fee_structure.percentage;
 
         Ok(BatchScanResult {
-            id: request.id,
+            request_id: request.id,
             batch_id: Some(request.id.to_string()),
             total_wallets: request.wallet_addresses.len(),
             successful_scans,
@@ -217,6 +217,7 @@ impl AdaptiveParallelProcessor {
             created_at: request.created_at,
             completed_at: Some(chrono::Utc::now()),
             duration_ms: Some(duration_ms),
+            scan_time_ms: duration_ms,
         })
     }
 
@@ -353,8 +354,12 @@ impl AdaptiveParallelProcessor {
                 wallet_address: task.wallet_address.clone(),
                 status: ScanStatus::Completed,
                 result: None, // Would contain actual WalletInfo
-                error: None,
+                empty_accounts_found: 0,
+                recoverable_sol: 0.0,
+                scan_time_ms: start_time.elapsed().as_millis() as u64,
                 created_at: chrono::Utc::now(),
+                completed_at: Some(chrono::Utc::now()),
+                error_message: None,
             })
         }).await;
         
@@ -375,8 +380,12 @@ impl AdaptiveParallelProcessor {
                     wallet_address: task.wallet_address,
                     status: ScanStatus::Failed,
                     result: None,
-                    error: Some(e.to_string()),
+                    empty_accounts_found: 0,
+                    recoverable_sol: 0.0,
+                    scan_time_ms: start_time.elapsed().as_millis() as u64,
                     created_at: chrono::Utc::now(),
+                    completed_at: Some(chrono::Utc::now()),
+                    error_message: Some(e.to_string()),
                 })
             }
             Err(_) => {
@@ -386,8 +395,12 @@ impl AdaptiveParallelProcessor {
                     wallet_address: task.wallet_address,
                     status: ScanStatus::Failed,
                     result: None,
-                    error: Some("Task timed out".to_string()),
+                    empty_accounts_found: 0,
+                    recoverable_sol: 0.0,
+                    scan_time_ms: start_time.elapsed().as_millis() as u64,
                     created_at: chrono::Utc::now(),
+                    completed_at: Some(chrono::Utc::now()),
+                    error_message: Some("Task timed out".to_string()),
                 })
             }
         }

@@ -111,7 +111,11 @@ pub async fn scan_wallet_ultra_fast(
     wallet_address: &str,
     rpc_endpoint: Option<&str>,
 ) -> core::Result<WalletInfo> {
-    use core::{RpcEndpoint, OptimizedWalletScanner, OptimizedScannerConfig, PerformanceMode};
+    use core::{ScannerFactory, UnifiedScannerConfig};
+    use core::unified_scanner::PerformanceMode;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use std::sync::Arc;
     
     let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
     let rpc_endpoint = RpcEndpoint {
@@ -122,32 +126,31 @@ pub async fn scan_wallet_ultra_fast(
         healthy: true,
     };
     
-    // Ultra-fast configuration
-    let config = OptimizedScannerConfig {
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 16));
+    
+    // Ultra-fast configuration using new unified architecture
+    let config = UnifiedScannerConfig {
         performance_mode: PerformanceMode::UltraFast,
-        enable_all_optimizations: true,
-        enable_predictive_prefetch: true,
-        enable_connection_multiplexing: true,
-        enable_smart_batching: true,
-        enable_fast_path: true,
         max_concurrent_scans: 500,
         scan_timeout: std::time::Duration::from_secs(2),
-        prefetch_window_size: 50,
-        batch_size_multiplier: 2.0,
-        ..Default::default()
+        batch_size: 100,
+        enable_optimizations: true,
+        enable_caching: true,
+        enable_parallel_processing: true,
     };
     
-    let scanner = OptimizedWalletScanner::new(vec![rpc_endpoint], config)?;
-    let scan_result = scanner.scan_wallet_ultra_fast(wallet_address).await?;
+    let scanner = ScannerFactory::create_with_config(connection_pool, config)?;
+    let scan_result = scanner.scan_wallet(wallet_address).await?;
     
     scan_result.result.ok_or_else(|| 
         SolanaRecoverError::InternalError("Scan result is empty".to_string())
     )
 }
 
-/// Convenience function for quick wallet scanning using the core scanner
+/// Convenience function for quick wallet scanning using the unified scanner
 /// 
-/// This is the simplest way to scan a wallet for empty accounts.
+/// This is the simplest way to scan a wallet for empty accounts using the new
+/// unified architecture with strategy pattern.
 /// 
 /// # Arguments
 /// 
@@ -174,8 +177,10 @@ pub async fn scan_wallet(
     wallet_address: &str,
     rpc_endpoint: Option<&str>,
 ) -> core::Result<WalletInfo> {
+    use core::ScannerFactory;
+    use core::types::RpcEndpoint;
     use rpc::ConnectionPool;
-    use core::RpcEndpoint;
+    use std::sync::Arc;
     
     let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
     let rpc_endpoint = RpcEndpoint {
@@ -185,14 +190,16 @@ pub async fn scan_wallet(
         timeout_ms: 30000,
         healthy: true,
     };
-    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
-    let scanner = Arc::new(core::scanner::WalletScanner::new(connection_pool));
     
-    scanner.scan_wallet(wallet_address).await.and_then(|scan_result| {
-        scan_result.result.ok_or_else(|| 
-            SolanaRecoverError::InternalError("Scan result is empty".to_string())
-        )
-    })
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
+    
+    // Use balanced mode for general scanning
+    let scanner = ScannerFactory::create_balanced(connection_pool)?;
+    let scan_result = scanner.scan_wallet(wallet_address).await?;
+    
+    scan_result.result.ok_or_else(|| 
+        SolanaRecoverError::InternalError("Scan result is empty".to_string())
+    )
 }
 
 /// Convenience function for SOL recovery using the core recovery manager

@@ -1,5 +1,5 @@
 use crate::core::{Result, SolanaRecoverError, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
-use crate::core::parallel_processor::IntelligentParallelProcessor;
+use crate::core::adaptive_parallel_processor::AdaptiveParallelProcessor;
 use crate::rpc::{ConnectionPoolTrait};
 use crate::utils::memory_integration::{MemoryIntegrationLayer, ScannerMemoryManager};
 use solana_sdk::pubkey::Pubkey;
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub struct EnhancedWalletScanner {
     /// Original scanner functionality
     connection_pool: Arc<dyn ConnectionPoolTrait>,
-    parallel_processor: Option<Arc<IntelligentParallelProcessor>>,
+    parallel_processor: Option<Arc<AdaptiveParallelProcessor>>,
     
     /// Memory management integration
     memory_integration: Arc<MemoryIntegrationLayer>,
@@ -166,10 +166,20 @@ impl EnhancedWalletScanner {
             config: config_clone,
         };
         
-        let parallel_processor = Arc::new(IntelligentParallelProcessor::new(
+        let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
+            max_workers: max_workers.unwrap_or(4),
+            max_concurrent_tasks: max_concurrent_tasks,
+            work_stealing_enabled: true,
+            cpu_affinity_enabled: false,
+            adaptive_batching: true,
+            resource_monitoring: true,
+            load_balancing_strategy: crate::core::adaptive_parallel_processor::LoadBalancingStrategy::WorkStealing,
+            task_timeout: std::time::Duration::from_secs(30),
+            worker_idle_timeout: std::time::Duration::from_secs(60),
+        };
+        let parallel_processor = Arc::new(AdaptiveParallelProcessor::new(
             Arc::new(crate::core::scanner::WalletScanner::new(scanner.connection_pool.clone())),
-            max_workers,
-            max_concurrent_tasks,
+            processor_config,
         )?);
         
         Ok(Self {
@@ -254,7 +264,7 @@ impl EnhancedWalletScanner {
     /// Process batch with memory tracking and optimization
     async fn process_batch_with_memory_tracking(
         &self,
-        processor: &Arc<IntelligentParallelProcessor>,
+        processor: &Arc<AdaptiveParallelProcessor>,
         request: &BatchScanRequest,
     ) -> Result<BatchScanResult> {
         let _start_time = Instant::now();
@@ -264,14 +274,24 @@ impl EnhancedWalletScanner {
         
         // Create a local mutable processor for this batch
         // Note: This is a workaround since we can't get mutable reference from Arc
-        let mut local_processor = IntelligentParallelProcessor::new(
-            processor.scanner.clone(),
-            Some(processor.max_workers),
-            processor.semaphore.available_permits(),
+        let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
+            max_workers: 4,
+            max_concurrent_tasks: 100,
+            work_stealing_enabled: true,
+            cpu_affinity_enabled: false,
+            adaptive_batching: true,
+            resource_monitoring: true,
+            load_balancing_strategy: crate::core::adaptive_parallel_processor::LoadBalancingStrategy::WorkStealing,
+            task_timeout: std::time::Duration::from_secs(30),
+            worker_idle_timeout: std::time::Duration::from_secs(60),
+        };
+        let mut local_processor = AdaptiveParallelProcessor::new(
+            Arc::new(crate::core::scanner::WalletScanner::new(self.connection_pool.clone())),
+            processor_config,
         )?;
         
         // Process the batch
-        let result = local_processor.process_batch_intelligently(request).await?;
+        let result = local_processor.process_batch_adaptive(request).await?;
         
         // Track memory usage
         let final_memory = self.memory_integration.get_memory_manager().get_memory_stats().total_allocated_bytes;
@@ -318,7 +338,7 @@ impl EnhancedWalletScanner {
                     error_result.id = Uuid::new_v4();
                     error_result.wallet_address = wallet_address.clone();
                     error_result.status = ScanStatus::Failed;
-                    error_result.error = Some(e.to_string());
+                    error_result.error_message = Some(e.to_string());
                     error_result.created_at = Utc::now();
                     
                     results.push(error_result.into_inner());
@@ -330,7 +350,7 @@ impl EnhancedWalletScanner {
         
         // Use pooled batch scan result
         let mut batch_result = self.scanner_memory_manager.acquire_batch_scan_result();
-        batch_result.id = request.id;
+        batch_result.request_id = request.id;
         batch_result.total_wallets = request.wallet_addresses.len();
         batch_result.successful_scans = successful_scans;
         batch_result.failed_scans = failed_scans;

@@ -228,6 +228,35 @@ impl BatchRpcClient {
         })
     }
 
+    /// Scan wallet accounts with basic method (resource-efficient)
+    pub async fn scan_wallet_accounts_basic(
+        &self,
+        wallet_pubkey: &Pubkey,
+    ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
+        let start_time = Instant::now();
+        
+        // Get a connection from the pool
+        let client = self.connection_pool.get_client().await?;
+        
+        // Use simple get_token_accounts call
+        let token_accounts = client.get_token_accounts(wallet_pubkey).await?;
+        
+        // Convert to RpcKeyedAccount format
+        let mut keyed_accounts = Vec::new();
+        for account in token_accounts {
+            keyed_accounts.push(solana_client::rpc_response::RpcKeyedAccount {
+                pubkey: account.pubkey,
+                account: account.account,
+            });
+        }
+        
+        let duration = start_time.elapsed();
+        tracing::debug!("Basic account scan completed in {}ms, found {} accounts", 
+                       duration.as_millis(), keyed_accounts.len());
+        
+        Ok(keyed_accounts)
+    }
+    
     /// Optimized batch operation for wallet scanning
     pub async fn scan_wallet_accounts_optimized(
         &self,

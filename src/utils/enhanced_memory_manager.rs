@@ -225,14 +225,18 @@ impl EnhancedMemoryManager {
                     wallet_address: String::new(),
                     status: crate::core::types::ScanStatus::Pending,
                     result: None,
-                    error: None,
+                    empty_accounts_found: 0,
+                    recoverable_sol: 0.0,
+                    scan_time_ms: 0,
                     created_at: Utc::now(),
+                    completed_at: None,
+                    error_message: None,
                 }
             )),
             batch_scan_result_pool: Arc::new(MemoryPool::with_factory(
                 config.max_pool_sizes.batch_scan_result_pool,
                 || BatchScanResult {
-                    id: uuid::Uuid::new_v4(),
+                    request_id: uuid::Uuid::new_v4(),
                     batch_id: None,
                     total_wallets: 0,
                     successful_scans: 0,
@@ -245,6 +249,7 @@ impl EnhancedMemoryManager {
                     created_at: Utc::now(),
                     completed_at: None,
                     duration_ms: None,
+                    scan_time_ms: 0,
                 }
             )),
             recovery_transaction_pool: Arc::new(MemoryPool::with_factory(

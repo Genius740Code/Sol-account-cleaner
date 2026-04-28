@@ -29,8 +29,12 @@ pub struct ScanResult {
     pub wallet_address: String,
     pub status: ScanStatus,
     pub result: Option<WalletInfo>,
-    pub error: Option<String>,
+    pub empty_accounts_found: u64,
+    pub recoverable_sol: f64,
+    pub scan_time_ms: u64,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -53,7 +57,7 @@ pub struct BatchScanRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BatchScanResult {
-    pub id: Uuid,
+    pub request_id: Uuid,
     pub batch_id: Option<String>, // For backward compatibility
     pub total_wallets: usize,
     pub successful_scans: usize,
@@ -66,6 +70,7 @@ pub struct BatchScanResult {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub duration_ms: Option<u64>,
+    pub scan_time_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

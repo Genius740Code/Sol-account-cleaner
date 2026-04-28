@@ -17,6 +17,7 @@ pub mod validation;
 pub mod distributed_rate_limiter;
 pub mod security_auditor;
 pub mod circuit_breaker;
+pub mod cache;
 
 // Re-export specific items to avoid conflicts
 pub use metrics::MetricsConfig as MetricsCollectorConfig;

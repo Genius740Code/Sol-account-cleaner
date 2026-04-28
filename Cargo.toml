@@ -1,6 +1,6 @@
 [package]
 name = "solana-recover"
-version = "1.0.5"
+version = "1.0.6"
 edition = "2021"
 description = "A comprehensive Solana wallet recovery and account management tool"
 license = "MIT"
