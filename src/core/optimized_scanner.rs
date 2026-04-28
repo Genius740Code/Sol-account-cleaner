@@ -958,13 +958,15 @@ impl OptimizedWalletScanner {
             solana_account_decoder::UiAccountData::Binary(data_str, encoding) => {
                 // Optimized binary parsing for token accounts
                 if let Ok(token_account) = self.parse_token_account_fast(&data_str, &encoding) {
-                    if token_account.amount == 0 && account.lamports > 0 {
-                        return Some(EmptyAccount {
-                            address: address.to_string(),
-                            lamports: account.lamports,
-                            owner: account.owner.clone(),
-                            mint: Some(token_account.mint),
-                        });
+                    if let Some(token_acc) = &token_account {
+                        if token_acc.amount == 0 && account.lamports > 0 {
+                            return Some(EmptyAccount {
+                                address: address.to_string(),
+                                lamports: account.lamports,
+                                owner: account.owner.clone(),
+                                mint: Some(token_acc.mint.clone()),
+                            });
+                        }
                     }
                 }
             }
@@ -1002,7 +1004,7 @@ impl OptimizedWalletScanner {
             "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT
         ];
 
-        for mint in common_mints {
+        for mint in &common_mints {
             let cache_key = format!("mint_info:{}", mint);
             // Check cache existence (simplified for now)
             // Prefetch in background
@@ -1023,7 +1025,7 @@ impl OptimizedWalletScanner {
         // Store prefetch data
         self.prefetch_cache.insert(wallet_address.to_string(), PrefetchData {
             wallet_address: wallet_address.to_string(),
-            predicted_accounts: common_mints,
+            predicted_accounts: common_mints.iter().map(|s| s.to_string()).collect(),
             last_updated: Instant::now(),
             access_frequency: 1,
             priority_score: 1.0,
