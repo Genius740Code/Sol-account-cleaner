@@ -141,7 +141,9 @@ pub async fn scan_wallet_ultra_fast(
     let scanner = OptimizedWalletScanner::new(vec![rpc_endpoint], config)?;
     let scan_result = scanner.scan_wallet_ultra_fast(wallet_address).await?;
     
-    Ok(scan_result.result.unwrap())
+    scan_result.result.ok_or_else(|| 
+        SolanaRecoverError::InternalError("Scan result is empty".to_string())
+    )
 }
 
 /// Convenience function for quick wallet scanning using the core scanner
@@ -187,7 +189,11 @@ pub async fn scan_wallet(
     let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
     let scanner = Arc::new(core::scanner::WalletScanner::new(connection_pool));
     
-    scanner.scan_wallet(wallet_address).await.map(|scan_result| scan_result.result.unwrap())
+    scanner.scan_wallet(wallet_address).await.and_then(|scan_result| {
+        scan_result.result.ok_or_else(|| 
+            SolanaRecoverError::InternalError("Scan result is empty".to_string())
+        )
+    })
 }
 
 /// Convenience function for SOL recovery using the core recovery manager

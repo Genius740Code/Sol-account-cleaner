@@ -73,6 +73,12 @@ pub enum SolanaRecoverError {
     
     #[error("Transaction error: {0}")]
     TransactionError(String),
+    
+    #[error("Security error: {0}")]
+    SecurityError(String),
+    
+    #[error("Circuit breaker open: {0}")]
+    CircuitBreakerOpen(String),
 }
 
 impl Clone for SolanaRecoverError {
@@ -102,6 +108,8 @@ impl Clone for SolanaRecoverError {
             SolanaRecoverError::DatabaseError(msg) => SolanaRecoverError::DatabaseError(msg.clone()),
             SolanaRecoverError::RusqliteError(msg) => SolanaRecoverError::RusqliteError(msg.clone()),
             SolanaRecoverError::TransactionError(msg) => SolanaRecoverError::TransactionError(msg.clone()),
+            SolanaRecoverError::SecurityError(msg) => SolanaRecoverError::SecurityError(msg.clone()),
+            SolanaRecoverError::CircuitBreakerOpen(msg) => SolanaRecoverError::CircuitBreakerOpen(msg.clone()),
         }
     }
 }

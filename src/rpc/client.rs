@@ -1,5 +1,6 @@
 use crate::core::{Result, SolanaRecoverError};
 use crate::storage::{HierarchicalCache, HierarchicalCacheConfig};
+use crate::config::ProgramIds;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_client::rpc_filter::{RpcFilterType, Memcmp, MemcmpEncodedBytes};
@@ -18,6 +19,7 @@ pub struct RpcClientWrapper {
     request_timeout: Duration,
     rent_cache: Cache<usize, u64>, // Cache for rent exemption queries
     hierarchical_cache: Option<Arc<HierarchicalCache>>, // Enhanced multi-tier cache
+    program_ids: Arc<ProgramIds>, // Secure program ID configuration
 }
 
 impl std::fmt::Debug for RpcClientWrapper {
@@ -29,19 +31,21 @@ impl std::fmt::Debug for RpcClientWrapper {
 }
 
 impl RpcClientWrapper {
-    pub fn new(client: Arc<RpcClient>, rate_limiter: Arc<dyn RateLimiter>) -> Self {
+    pub fn new(client: Arc<RpcClient>, rate_limiter: Arc<dyn RateLimiter>) -> Result<Self> {
+        let program_ids = Arc::new(ProgramIds::default());
         let rent_cache = Cache::builder()
             .max_capacity(1000)
             .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
             .build();
         
-        Self {
+        Ok(Self {
             client,
             rate_limiter,
             request_timeout: Duration::from_secs(30),
             rent_cache,
             hierarchical_cache: None,
-        }
+            program_ids,
+        })
     }
     
     pub fn new_with_url(url: &str, timeout_ms: u64) -> Result<Self> {
@@ -50,6 +54,7 @@ impl RpcClientWrapper {
             Duration::from_millis(timeout_ms),
         ));
         let rate_limiter = Arc::new(TokenBucketRateLimiter::new(100));
+        let program_ids = Arc::new(ProgramIds::default());
         
         let rent_cache = Cache::builder()
             .max_capacity(1000)
@@ -62,6 +67,7 @@ impl RpcClientWrapper {
             request_timeout: Duration::from_millis(timeout_ms),
             rent_cache,
             hierarchical_cache: None,
+            program_ids,
         })
     }
     
@@ -181,13 +187,9 @@ impl RpcClientWrapper {
     pub async fn get_openbook_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
         self.rate_limiter.acquire().await?;
         
-        // OpenBook V2 program ID
-        let openbook_v2_id = Pubkey::from_str("opnb2vDkSQsqmY24zQ4DDEZf1V3oEisPZ5bEErLNRsA")
-            .map_err(|_| SolanaRecoverError::InternalError("Invalid OpenBook V2 program ID".to_string()))?;
-        
-        // Serum DEX program ID (legacy)
-        let serum_dex_id = Pubkey::from_str("srmqPvvk92GzrcCbKgSGx3mFHTEQuoE3jUuAM6gEKrP")
-            .map_err(|_| SolanaRecoverError::InternalError("Invalid Serum DEX program ID".to_string()))?;
+        // Use validated program IDs from configuration
+        let openbook_v2_id = self.program_ids.openbook_v2;
+        let serum_dex_id = self.program_ids.serum_dex;
         
         let client = self.client.clone();
         let owner_pubkey = *pubkey;

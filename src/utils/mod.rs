@@ -13,6 +13,10 @@ pub mod http2_client;
 pub mod hardware_encryption;
 pub mod async_audit_logger;
 pub mod object_pool;
+pub mod validation;
+pub mod distributed_rate_limiter;
+pub mod security_auditor;
+pub mod circuit_breaker;
 
 // Re-export specific items to avoid conflicts
 pub use metrics::MetricsConfig as MetricsCollectorConfig;
@@ -30,3 +34,15 @@ pub use http2_client::Http2Client;
 pub use hardware_encryption::{HardwareEncryptionEngine, EncryptionConfig};
 pub use async_audit_logger::AsyncAuditLogger;
 pub use object_pool::{ObjectPool, PooledObject, MemoryManager as ObjectMemoryManager, PoolConfig, PoolMetrics, MemoryManagerConfig as ObjectMemoryManagerConfig, MemoryUsageStats};
+pub use validation::{InputValidator, InputSanitizer};
+pub use distributed_rate_limiter::{
+    DistributedRateLimiter, EnhancedRateLimiter, RateLimiterConfig, 
+    RateLimitRequest, RateLimiterStats, ComprehensiveRateLimiterStats
+};
+pub use security_auditor::{
+    SecurityAuditor, AuditEntry, OperationResult, AuditorConfig, AuditStatistics
+};
+pub use circuit_breaker::{
+    CircuitBreaker, CircuitBreakerManager, CircuitBreakerConfig, CircuitState,
+    CircuitBreakerMetrics, MetricsSnapshot
+};

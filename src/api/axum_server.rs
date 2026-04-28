@@ -134,6 +134,8 @@ impl IntoResponse for SolanaRecoverError {
             SolanaRecoverError::InvalidFeeStructure(_) => (StatusCode::BAD_REQUEST, "Invalid fee structure".to_string()),
             SolanaRecoverError::ConfigurationError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Configuration error".to_string()),
             SolanaRecoverError::IoError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "IO error".to_string()),
+            SolanaRecoverError::SecurityError(msg) => (StatusCode::FORBIDDEN, msg),
+            SolanaRecoverError::CircuitBreakerOpen(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
         };
 
         let body = Json(serde_json::json!({

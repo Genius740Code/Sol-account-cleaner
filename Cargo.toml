@@ -94,6 +94,7 @@ governor           = "0.6"
 jsonwebtoken       = "9.0"
 redis              = { version = "0.25", features = ["tokio-comp"] }
 base64             = "0.22"
+url                = "2.5"
 urlencoding        = "2.1"
 flate2             = "1.0"
 num_cpus           = "1.16"
