@@ -1,4 +1,4 @@
-use crate::core::{Result, SolanaRecoverError, WalletInfo, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult};
+use crate::core::{Result, WalletInfo, ScanResult, ScanStatus, EmptyAccount, BatchScanRequest, BatchScanResult, SolanaRecoverError};
 use crate::core::scanner::TokenAccountInfo;
 use crate::rpc::{EnhancedConnectionPool, BatchRpcClient, ConnectionPoolTrait};
 use crate::storage::{MultiLevelCache, CachedAccount, AccountData, CachePriority};
@@ -7,19 +7,17 @@ use crate::core::adaptive_parallel_processor::{AdaptiveParallelProcessor, Proces
 use crate::utils::{MemoryManager as ObjectMemoryManager, MemoryManagerConfig as ObjectMemoryManagerConfig};
 use crate::rpc::RpcClientWrapper;
 use crate::core::ultra_fast_scanner::{PrefetchData, ScanOptimizer, ConnectionMultiplexer, BatchOptimizer, FastPathScanner};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 use chrono::Utc;
-use tracing::{info, debug, warn, error};
-use std::collections::HashMap;
-use tokio::sync::RwLock;
+use tracing::{info, debug, warn};
 use rayon::prelude::*;
 use dashmap::DashMap;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
-use parking_lot::Mutex;
+use base64::Engine;
 
 /// High-performance optimized wallet scanner integrating all performance optimizations
 /// Features: Ultra-fast scanning, intelligent caching, adaptive parallel processing, predictive prefetching
@@ -190,21 +188,21 @@ impl OptimizedWalletScanner {
     }
 
     /// Ultra-fast wallet scanning with all optimizations
-    pub async fn scan_wallet_ultra_fast(&self, wallet_address: &str) -> Result<ScanResult> {
+    pub async fn scan_wallet_ultra_fast(&self, _wallet_address: &str) -> Result<ScanResult> {
         let start_time = Instant::now();
         let scan_id = Uuid::new_v4();
         
-        info!("Starting ultra-fast scan for wallet: {}", wallet_address);
+        info!("Starting ultra-fast scan for wallet: {}", _wallet_address);
 
         // Try fast path first for common patterns
         if self.config.enable_fast_path {
-            if let Some(wallet_info) = self.fast_path.try_fast_path(wallet_address).await {
+            if let Some(wallet_info) = self.fast_path.try_fast_path(_wallet_address).await {
                 let scan_time = start_time.elapsed().as_millis() as u64;
                 info!("Fast path scan completed in {}ms", scan_time);
                 
                 return Ok(ScanResult {
                     id: scan_id,
-                    wallet_address: wallet_address.to_string(),
+                    wallet_address: _wallet_address.to_string(),
                     status: ScanStatus::Completed,
                     result: Some(wallet_info),
                     error: None,
@@ -215,7 +213,7 @@ impl OptimizedWalletScanner {
 
         // Predictive prefetching if enabled
         if self.config.enable_predictive_prefetch {
-            self.prefetch_related_data(wallet_address).await;
+            self.prefetch_related_data(_wallet_address).await;
         }
 
         // Get optimized connection
@@ -223,13 +221,13 @@ impl OptimizedWalletScanner {
 
         // Use scan optimizer for optimal strategy
         let (batch_size, concurrency) = self.scan_optimizer.optimize_scan_strategy(
-            wallet_address, 
+            _wallet_address, 
             50 // Estimated account count
         ).await?;
 
         // Perform optimized scan with connection multiplexing
         let scan_result = self.perform_ultra_fast_scan(
-            wallet_address, 
+            _wallet_address, 
             scan_id, 
             start_time,
             batch_size,
@@ -239,7 +237,7 @@ impl OptimizedWalletScanner {
 
         // Record performance for optimization
         let scan_time = start_time.elapsed().as_millis() as u64;
-        self.scan_optimizer.record_performance(wallet_address, scan_time, true).await;
+        self.scan_optimizer.record_performance(_wallet_address, scan_time, true).await;
 
         Ok(scan_result)
     }
@@ -265,18 +263,19 @@ impl OptimizedWalletScanner {
     }
 
     /// Perform the actual optimized scan
-    async fn perform_optimized_scan(&self, wallet_address: &str, scan_id: Uuid, start_time: Instant) -> Result<ScanResult> {
-        let pubkey = Pubkey::from_str(wallet_address)
-            .map_err(|_| SolanaRecoverError::InvalidWalletAddress(wallet_address.to_string()))?;
+    #[allow(dead_code)]
+    async fn perform_optimized_scan(&self, _wallet_address: &str, scan_id: Uuid, start_time: Instant) -> Result<ScanResult> {
+        let pubkey = Pubkey::from_str(_wallet_address)
+            .map_err(|_| SolanaRecoverError::InvalidWalletAddress(_wallet_address.to_string()))?;
 
         // Use optimized batch client for account retrieval
         let accounts = self.batch_client.scan_wallet_accounts_optimized(&pubkey).await?;
         let total_accounts = accounts.len();
 
-        debug!("Retrieved {} accounts for wallet {}", total_accounts, wallet_address);
+        debug!("Retrieved {} accounts for wallet {}", total_accounts, _wallet_address);
 
         // Process accounts in parallel batches
-        let empty_accounts = self.process_accounts_parallel(&accounts, wallet_address).await?;
+        let empty_accounts = self.process_accounts_parallel(&accounts, _wallet_address).await?;
 
         // Calculate totals
         let total_recoverable_lamports: u64 = empty_accounts.iter().map(|acc| acc.lamports).sum();
@@ -285,7 +284,7 @@ impl OptimizedWalletScanner {
         let scan_time = start_time.elapsed().as_millis() as u64;
 
         let wallet_info = WalletInfo {
-            address: wallet_address.to_string(),
+            address: _wallet_address.to_string(),
             pubkey,
             total_accounts: total_accounts as u64,
             empty_accounts: empty_accounts.len() as u64,
@@ -299,7 +298,7 @@ impl OptimizedWalletScanner {
 
         Ok(ScanResult {
             id: scan_id,
-            wallet_address: wallet_address.to_string(),
+            wallet_address: _wallet_address.to_string(),
             status: ScanStatus::Completed,
             result: Some(wallet_info),
             error: None,
@@ -308,7 +307,7 @@ impl OptimizedWalletScanner {
     }
 
     /// Process accounts in parallel batches
-    async fn process_accounts_parallel(&self, accounts: &[solana_client::rpc_response::RpcKeyedAccount], wallet_address: &str) -> Result<Vec<EmptyAccount>> {
+    async fn process_accounts_parallel(&self, accounts: &[solana_client::rpc_response::RpcKeyedAccount], _wallet_address: &str) -> Result<Vec<EmptyAccount>> {
         let batch_size = self.calculate_optimal_batch_size(accounts.len());
         let mut empty_accounts = Vec::new();
 
@@ -316,7 +315,7 @@ impl OptimizedWalletScanner {
         let account_chunks: Vec<_> = accounts.chunks(batch_size).collect();
         
         for chunk in account_chunks {
-            let chunk_results = self.process_account_chunk(chunk, wallet_address).await?;
+            let chunk_results = self.process_account_chunk(chunk, _wallet_address).await?;
             empty_accounts.extend(chunk_results);
             
             // Adaptive delay based on system load
@@ -329,12 +328,12 @@ impl OptimizedWalletScanner {
     }
 
     /// Process a chunk of accounts
-    async fn process_account_chunk(&self, accounts: &[solana_client::rpc_response::RpcKeyedAccount], wallet_address: &str) -> Result<Vec<EmptyAccount>> {
+    async fn process_account_chunk(&self, accounts: &[solana_client::rpc_response::RpcKeyedAccount], _wallet_address: &str) -> Result<Vec<EmptyAccount>> {
         let mut empty_accounts = Vec::new();
         
-        // Process accounts concurrently within the chunk
-        let process_futures = accounts.iter().map(|account| {
-            self.check_empty_account_optimized(account, wallet_address)
+        // Process accounts concurrently within chunk
+        let process_futures = accounts.iter().map(|keyed_account| {
+            self.check_empty_account_simple(keyed_account, &keyed_account.account)
         });
 
         let results = futures::future::join_all(process_futures).await;
@@ -345,7 +344,7 @@ impl OptimizedWalletScanner {
                     empty_accounts.push(empty_account);
                 }
                 Ok(None) => {
-                    // Account not empty, skip
+                    // Continue processing other accounts
                 }
                 Err(e) => {
                     warn!("Error checking account: {}", e);
@@ -357,47 +356,147 @@ impl OptimizedWalletScanner {
         Ok(empty_accounts)
     }
 
-    /// Optimized empty account check with caching
-    async fn check_empty_account_optimized(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, wallet_address: &str) -> Result<Option<EmptyAccount>> {
-        let account_pubkey_str = &keyed_account.pubkey;
-        let account = &keyed_account.account;
-        
+    /// Simple empty account check
+    async fn check_empty_account_simple(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
         // Protection: Never flag the main wallet address
-        if account_pubkey_str == wallet_address {
-            return Ok(None);
-        }
-
-        // Check cache for rent exemption data
-        let cache_key = format!("rent_exemption:{}", account.space.unwrap_or(0));
-        let min_rent_exemption = if let Some(cached_account) = self.cache.get(&cache_key).await? {
-            if let AccountData::RentExemption(rent) = cached_account.data {
-                rent
-            } else {
-                self.get_rent_exemption_with_cache(account.space.unwrap_or(0) as usize).await?
-            }
-        } else {
-            self.get_rent_exemption_with_cache(account.space.unwrap_or(0) as usize).await?
-        };
-
         // Use object pool for temporary data
         let _temp_buffer = self.memory_manager.get_buffer_blocking();
 
-        // Perform the actual account check (similar to original scanner but optimized)
+        // Perform actual account check (similar to original scanner but optimized)
         let owner_pubkey = Pubkey::from_str(&account.owner)
             .map_err(|_| SolanaRecoverError::InvalidWalletAddress(account.owner.clone()))?;
 
         // Token account check
         if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
-            return self.check_token_account_optimized(keyed_account, account_pubkey_str, account).await;
+            return self.check_token_account_simple(keyed_account, account).await;
         }
 
         // System account check
         if owner_pubkey == solana_program::system_program::id() {
-            return self.check_system_account_optimized(keyed_account, account_pubkey_str, account, min_rent_exemption).await;
+            return self.check_system_account_simple(keyed_account, account).await;
         }
 
         // Other program accounts
-        self.check_other_account_optimized(keyed_account, account_pubkey_str, account, min_rent_exemption).await
+        self.check_other_account_simple(keyed_account, account).await
+    }
+
+    /// Simple token account check
+    async fn check_token_account_simple(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
+        // Similar to original but with optimizations
+        match &account.data {
+            solana_account_decoder::UiAccountData::Binary(data_str, encoding) => {
+                // Use object pool for temporary parsing
+                let _temp_buffer = self.memory_manager.get_buffer_blocking();
+                
+                if let Ok(token_account) = self.parse_token_account_from_binary_optimized(&data_str, &encoding) {
+                    if token_account.amount == 0 && account.lamports > 0 {
+                        return Ok(Some(EmptyAccount {
+                            address: keyed_account.pubkey.clone(),
+                            lamports: account.lamports,
+                            owner: account.owner.clone(),
+                            mint: Some(token_account.mint),
+                        }));
+                    }
+                }
+            }
+            solana_account_decoder::UiAccountData::Json(parsed) => {
+                // Optimized JSON parsing
+                if let Some(token_amount) = parsed.parsed.get("info").and_then(|i| i.get("tokenAmount")) {
+                    if let Some(amount) = token_amount.get("amount") {
+                        if let Some(ui_amount) = amount.as_u64() {
+                            if ui_amount == 0 && account.lamports > 0 {
+                                let owner = parsed.parsed.get("info")
+                                    .and_then(|i| i.get("owner"))
+                                    .and_then(|o| o.as_str())
+                                    .unwrap_or("unknown")
+                                    .to_string();
+                                let mint = parsed.parsed.get("info")
+                                    .and_then(|i| i.get("mint"))
+                                    .and_then(|m| m.as_str())
+                                    .map(|m| m.to_string());
+
+                                return Ok(Some(EmptyAccount {
+                                    address: keyed_account.pubkey.clone(),
+                                    lamports: account.lamports,
+                                    owner,
+                                    mint,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                debug!("Unsupported data format for token account: {}", keyed_account.pubkey);
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Simple system account check
+    async fn check_system_account_simple(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
+        if !account.executable {
+            let is_data_empty = self.is_account_data_empty(&account.data);
+            
+            if account.lamports > 0 && is_data_empty {
+                return Ok(Some(EmptyAccount {
+                    address: keyed_account.pubkey.clone(),
+                    lamports: account.lamports,
+                    owner: account.owner.clone(),
+                    mint: None,
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Simple other account check
+    async fn check_other_account_simple(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
+        if !account.executable && account.lamports > 0 {
+            let is_data_empty = self.is_account_data_empty(&account.data);
+            
+            if is_data_empty {
+                return Ok(Some(EmptyAccount {
+                    address: keyed_account.pubkey.clone(),
+                    lamports: account.lamports,
+                    owner: account.owner.clone(),
+                    mint: None,
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Optimized empty account check with caching
+    #[allow(dead_code)]
+    async fn check_empty_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, _wallet_address: &str, min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
+        // Protection: Never flag the main wallet address
+        if _account_pubkey_str == _wallet_address {
+            return Ok(None);
+        }
+
+        // Use object pool for temporary data
+        let _temp_buffer = self.memory_manager.get_buffer_blocking();
+
+        // Perform actual account check (similar to original scanner but optimized)
+        let owner_pubkey = Pubkey::from_str(&account.owner)
+            .map_err(|_| SolanaRecoverError::InvalidWalletAddress(account.owner.clone()))?;
+
+        // Token account check
+        if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
+            return self.check_token_account_optimized(_keyed_account, _account_pubkey_str, account).await;
+        }
+
+        // System account check
+        if owner_pubkey == solana_program::system_program::id() {
+            return self.check_system_account_optimized(_keyed_account, _account_pubkey_str, account, min_rent_exemption).await;
+        }
+
+        // Other program accounts
+        self.check_other_account_optimized(_keyed_account, _account_pubkey_str, account, min_rent_exemption).await
     }
 
     /// Get rent exemption with caching
@@ -431,7 +530,8 @@ impl OptimizedWalletScanner {
     }
 
     /// Optimized token account check
-    async fn check_token_account_optimized(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account_pubkey_str: &str, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
+    #[allow(dead_code)]
+    async fn check_token_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
         // Similar to original but with optimizations
         match &account.data {
             solana_account_decoder::UiAccountData::Binary(data_str, encoding) => {
@@ -441,7 +541,7 @@ impl OptimizedWalletScanner {
                 if let Ok(token_account) = self.parse_token_account_from_binary_optimized(&data_str, &encoding) {
                     if token_account.amount == 0 && account.lamports > 0 {
                         return Ok(Some(EmptyAccount {
-                            address: account_pubkey_str.to_string(),
+                            address: _account_pubkey_str.to_string(),
                             lamports: account.lamports,
                             owner: account.owner.clone(),
                             mint: Some(token_account.mint),
@@ -466,7 +566,7 @@ impl OptimizedWalletScanner {
                                     .map(|m| m.to_string());
 
                                 return Ok(Some(EmptyAccount {
-                                    address: account_pubkey_str.to_string(),
+                                    address: _account_pubkey_str.to_string(),
                                     lamports: account.lamports,
                                     owner,
                                     mint,
@@ -477,7 +577,7 @@ impl OptimizedWalletScanner {
                 }
             }
             _ => {
-                debug!("Unsupported data format for token account: {}", account_pubkey_str);
+                debug!("Unsupported data format for token account: {}", _account_pubkey_str);
             }
         }
 
@@ -485,13 +585,14 @@ impl OptimizedWalletScanner {
     }
 
     /// Optimized system account check
-    async fn check_system_account_optimized(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
+    #[allow(dead_code)]
+    async fn check_system_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, _min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
         if !account.executable {
             let is_data_empty = self.is_account_data_empty(&account.data);
             
-            if account.lamports >= min_rent_exemption && is_data_empty && account.lamports > 0 {
+            if account.lamports >= _min_rent_exemption && is_data_empty && account.lamports > 0 {
                 return Ok(Some(EmptyAccount {
-                    address: account_pubkey_str.to_string(),
+                    address: _account_pubkey_str.to_string(),
                     lamports: account.lamports,
                     owner: account.owner.clone(),
                     mint: None,
@@ -503,18 +604,19 @@ impl OptimizedWalletScanner {
     }
 
     /// Optimized other account check
-    async fn check_other_account_optimized(&self, keyed_account: &solana_client::rpc_response::RpcKeyedAccount, account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
+    #[allow(dead_code)]
+    async fn check_other_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, _min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
         if !account.executable && account.lamports > 0 {
-            let tolerance = min_rent_exemption / 10;
-            let is_rent_exempt = account.lamports >= min_rent_exemption.saturating_sub(tolerance) 
-                && account.lamports <= min_rent_exemption.saturating_add(tolerance);
+            let tolerance = _min_rent_exemption / 10;
+            let is_rent_exempt = account.lamports >= _min_rent_exemption.saturating_sub(tolerance) 
+                && account.lamports <= _min_rent_exemption.saturating_add(tolerance);
 
             if is_rent_exempt {
                 let is_data_empty = self.is_account_data_empty(&account.data);
                 
                 if is_data_empty {
                     return Ok(Some(EmptyAccount {
-                        address: account_pubkey_str.to_string(),
+                        address: _account_pubkey_str.to_string(),
                         lamports: account.lamports,
                         owner: account.owner.clone(),
                         mint: None,
@@ -912,7 +1014,7 @@ impl OptimizedWalletScanner {
     async fn process_accounts_ultra_fast(
         &self,
         accounts: &[solana_client::rpc_response::RpcKeyedAccount],
-        wallet_address: &str,
+        _wallet_address: &str,
         concurrency: usize,
     ) -> Result<Vec<EmptyAccount>> {
         // Use Rayon for CPU-bound parallel processing
@@ -979,7 +1081,7 @@ impl OptimizedWalletScanner {
     fn parse_token_account_fast(&self, data_str: &str, encoding: &solana_account_decoder::UiAccountEncoding) -> Result<Option<TokenAccountInfo>> {
         // Fast path for base64 encoded token accounts
         if *encoding == solana_account_decoder::UiAccountEncoding::Base64 {
-            if let Ok(decoded) = base64::decode(data_str) {
+            if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(data_str) {
                 if decoded.len() >= 64 { // Minimum token account size
                     // Extract mint and amount from known offsets
                     let mint_bytes = &decoded[32..64];
@@ -1005,10 +1107,10 @@ impl OptimizedWalletScanner {
         ];
 
         for mint in &common_mints {
-            let cache_key = format!("mint_info:{}", mint);
+            let _cache_key = format!("mint_info:{}", mint);
             // Check cache existence (simplified for now)
             // Prefetch in background
-            let cache = self.cache.clone();
+            let _cache = self.cache.clone();
             let connection_pool = self.connection_pool.clone();
             let mint = mint.to_string();
             
@@ -1035,8 +1137,8 @@ impl OptimizedWalletScanner {
     /// Start background optimization tasks
     fn start_background_tasks(&self) {
         let connection_multiplexer = self.connection_multiplexer.clone();
-        let batch_optimizer = self.batch_optimizer.clone();
-        let cache = self.cache.clone();
+        let _batch_optimizer = self.batch_optimizer.clone();
+        let _cache = self.cache.clone();
         
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));

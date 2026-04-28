@@ -198,7 +198,7 @@ impl CircuitBreaker {
         // Check if we should use a request-type-specific circuit breaker
         if self.config.track_per_request_type && request_type != "default" {
             let mut breakers = self.request_type_breakers.write().await;
-            let breaker = breakers.entry(request_type.to_string())
+            let _breaker = breakers.entry(request_type.to_string())
                 .or_insert_with(|| Arc::new(CircuitBreaker::with_config(self.config.clone())));
             
             // Drop the write lock before executing

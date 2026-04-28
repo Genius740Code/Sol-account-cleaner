@@ -111,7 +111,6 @@ pub async fn scan_wallet_ultra_fast(
     wallet_address: &str,
     rpc_endpoint: Option<&str>,
 ) -> core::Result<WalletInfo> {
-    use rpc::EnhancedConnectionPool;
     use core::{RpcEndpoint, OptimizedWalletScanner, OptimizedScannerConfig, PerformanceMode};
     
     let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);

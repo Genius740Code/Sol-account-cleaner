@@ -24,7 +24,6 @@ pub use errors::*;
 pub use fee_calculator::*;
 pub use enhanced_scanner::*;
 pub use processor::*;
-pub use processor_metrics::*;
 pub use recovery::*;
 pub use scanner::*;
 pub use error_handling::*;

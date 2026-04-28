@@ -1,14 +1,15 @@
-use crate::core::{Result, SolanaRecoverError, WalletInfo, EmptyAccount};
+use crate::core::{Result, WalletInfo, EmptyAccount};
 use solana_sdk::pubkey::Pubkey;
 use crate::rpc::{ConnectionPoolTrait, RpcClientWrapper};
-use crate::storage::{MultiLevelCache, CachedAccount, AccountData};
+use crate::storage::{MultiLevelCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use dashmap::DashMap;
 use tokio::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::{info, debug, warn};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 /// Predictive prefetching data for ultra-fast scanning
 #[derive(Debug, Clone)]
@@ -22,7 +23,9 @@ pub struct PrefetchData {
 
 /// Ultra-fast scan optimizer with intelligent batching
 pub struct ScanOptimizer {
+    #[allow(dead_code)]
     cache: Arc<MultiLevelCache>,
+    #[allow(dead_code)]
     batch_sizes: Arc<RwLock<HashMap<usize, usize>>>,
     optimization_history: Arc<DashMap<String, ScanOptimization>>,
 }
@@ -39,9 +42,11 @@ pub struct ScanOptimization {
 /// Connection multiplexer for maximizing throughput
 pub struct ConnectionMultiplexer {
     connection_pool: Arc<dyn ConnectionPoolTrait>,
-    active_connections: Arc<DashMap<String, Arc<RpcClientWrapper>>>,
+    active_connections: Arc<DashMap<u64, Arc<RpcClientWrapper>>>,
+    #[allow(dead_code)]
     connection_metrics: Arc<RwLock<ConnectionMetrics>>,
     max_connections: usize,
+    connection_counter: AtomicU64,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -79,8 +84,11 @@ pub enum BatchStrategy {
 
 /// Fast path scanner for common patterns
 pub struct FastPathScanner {
+    #[allow(dead_code)]
     common_patterns: Arc<DashMap<String, FastPathPattern>>,
+    #[allow(dead_code)]
     pattern_cache: Arc<RwLock<HashMap<String, WalletInfo>>>,
+    #[allow(dead_code)]
     fast_path_enabled: AtomicU64,
 }
 
@@ -136,17 +144,11 @@ impl ScanOptimizer {
             }
         }
 
-        // Calculate optimal batch size based on account count and historical performance
-        let base_batch_size = match account_count {
-            0..=10 => 10,
-            11..=50 => 25,
-            51..=200 => 50,
-            201..=1000 => 100,
-            _ => 200,
-        };
-
-        // Adjust based on recent performance
-        let optimal_batch_size = self.adjust_batch_size(base_batch_size, wallet_address).await;
+        // Calculate adaptive batch size based on account count and network conditions
+        let base_batch_size = self.calculate_adaptive_batch_size(account_count).await;
+        
+        // Adjust based on recent performance and network conditions
+        let optimal_batch_size = self.adjust_batch_size_dynamic(base_batch_size, wallet_address).await;
         let optimal_concurrency = std::cmp::min(account_count / optimal_batch_size + 1, 50);
 
         // Store optimization for future use
@@ -161,19 +163,112 @@ impl ScanOptimizer {
         Ok((optimal_batch_size, optimal_concurrency))
     }
 
-    async fn adjust_batch_size(&self, base_size: usize, wallet_address: &str) -> usize {
+    /// Calculate adaptive batch size based on account count and system conditions
+    async fn calculate_adaptive_batch_size(&self, account_count: usize) -> usize {
+        // Base calculation using logarithmic scaling for better performance
+        let base_size = if account_count == 0 {
+            10
+        } else {
+            // Use logarithmic scaling to prevent excessive batch sizes
+            let log_scale = (account_count as f64).log2().ceil() as usize;
+            std::cmp::min(
+                std::cmp::max(10, log_scale * 5),
+                200 // Maximum batch size
+            )
+        };
+
+        // Adjust based on system load and recent performance
+        self.adjust_for_system_conditions(base_size).await
+    }
+
+    /// Adjust batch size based on system conditions and recent performance
+    async fn adjust_for_system_conditions(&self, base_size: usize) -> usize {
+        // Get recent performance metrics
+        let recent_performance = self.get_recent_performance_metrics().await;
+        
         let mut adjusted_size = base_size;
         
-        // Check recent performance for this wallet or similar wallets
-        if let Some(optimization) = self.optimization_history.get(wallet_address) {
-            if optimization.avg_scan_time_ms > 1000.0 {
-                adjusted_size = std::cmp::max(adjusted_size / 2, 5); // Reduce batch size if too slow
-            } else if optimization.avg_scan_time_ms < 200.0 {
-                adjusted_size = std::cmp::min(adjusted_size * 2, 200); // Increase batch size if fast
+        // Adjust based on average response times
+        if let Some(avg_response_time) = recent_performance.avg_response_time_ms {
+            if avg_response_time > 2000.0 {
+                // High latency - reduce batch size significantly
+                adjusted_size = std::cmp::max(adjusted_size / 3, 5);
+            } else if avg_response_time > 1000.0 {
+                // Medium latency - moderate reduction
+                adjusted_size = std::cmp::max(adjusted_size / 2, 10);
+            } else if avg_response_time < 200.0 {
+                // Low latency - can increase batch size
+                adjusted_size = std::cmp::min(adjusted_size * 2, 200);
             }
         }
-
+        
+        // Adjust based on success rate
+        if let Some(success_rate) = recent_performance.success_rate {
+            if success_rate < 0.8 {
+                // Low success rate - reduce batch size
+                adjusted_size = std::cmp::max(adjusted_size / 2, 5);
+            } else if success_rate > 0.95 {
+                // High success rate - can increase batch size
+                adjusted_size = std::cmp::min(adjusted_size * 2, 200);
+            }
+        }
+        
         adjusted_size
+    }
+
+    /// Get recent performance metrics for adaptive adjustments
+    async fn get_recent_performance_metrics(&self) -> PerformanceMetrics {
+        let mut total_response_time = 0.0;
+        let mut total_success_rate = 0.0;
+        let mut count = 0;
+        
+        // Collect metrics from recent optimizations
+        for entry in self.optimization_history.iter() {
+            let optimization = entry.value();
+            if optimization.last_updated.elapsed() < Duration::from_secs(600) { // Last 10 minutes
+                total_response_time += optimization.avg_scan_time_ms;
+                total_success_rate += optimization.success_rate;
+                count += 1;
+            }
+        }
+        
+        PerformanceMetrics {
+            avg_response_time_ms: if count > 0 { Some(total_response_time / count as f64) } else { None },
+            success_rate: if count > 0 { Some(total_success_rate / count as f64) } else { None },
+        }
+    }
+
+    /// Dynamic batch size adjustment based on real-time performance
+    async fn adjust_batch_size_dynamic(&self, base_size: usize, wallet_address: &str) -> usize {
+        let mut adjusted_size = base_size;
+        
+        // Check wallet-specific performance history
+        if let Some(optimization) = self.optimization_history.get(wallet_address) {
+            let recent_performance = optimization.avg_scan_time_ms;
+            let success_rate = optimization.success_rate;
+            
+            // Aggressive adjustment for consistent poor performance
+            if recent_performance > 3000.0 && success_rate < 0.7 {
+                adjusted_size = std::cmp::max(adjusted_size / 4, 5);
+            } else if recent_performance > 1500.0 {
+                adjusted_size = std::cmp::max(adjusted_size / 2, 10);
+            } else if recent_performance < 300.0 && success_rate > 0.9 {
+                // Excellent performance - can be more aggressive
+                adjusted_size = std::cmp::min(adjusted_size * 3, 200);
+            } else if recent_performance < 500.0 {
+                adjusted_size = std::cmp::min(adjusted_size * 2, 150);
+            }
+        }
+        
+        // Ensure batch size is within reasonable bounds
+        std::cmp::max(5, std::cmp::min(adjusted_size, 200))
+    }
+
+    #[allow(dead_code)]
+    async fn adjust_batch_size(&self, base_size: usize, wallet_address: &str) -> usize {
+        // This method is now deprecated in favor of adjust_batch_size_dynamic
+        // Keeping for backward compatibility
+        self.adjust_batch_size_dynamic(base_size, wallet_address).await
     }
 
     pub async fn record_performance(&self, wallet_address: &str, scan_time_ms: u64, success: bool) {
@@ -200,12 +295,17 @@ impl ConnectionMultiplexer {
             active_connections: Arc::new(DashMap::new()),
             connection_metrics: Arc::new(RwLock::new(ConnectionMetrics::default())),
             max_connections,
+            connection_counter: AtomicU64::new(0),
         }
     }
 
     pub async fn get_optimized_connection(&self, request_type: &str) -> Result<Arc<RpcClientWrapper>> {
-        // Check if we have an optimized connection for this request type
-        let connection_key = format!("{}_{}", request_type, fastrand::u64(0..1000));
+        // Generate efficient hash-based connection key without string allocation
+        let mut hasher = DefaultHasher::new();
+        request_type.hash(&mut hasher);
+        let counter = self.connection_counter.fetch_add(1, Ordering::Relaxed);
+        hasher.write_u64(counter);
+        let connection_key = hasher.finish();
         
         if let Some(connection) = self.active_connections.get(&connection_key) {
             return Ok(connection.clone());
@@ -228,7 +328,7 @@ impl ConnectionMultiplexer {
         for entry in self.active_connections.iter() {
             // Simple cleanup logic - in production, use actual idle time tracking
             if fastrand::bool() {
-                to_remove.push(entry.key().clone());
+                to_remove.push(*entry.key());
             }
         }
 
@@ -318,6 +418,13 @@ impl BatchOptimizer {
             history.remove(0);
         }
     }
+}
+
+/// Performance metrics for adaptive batch processing
+#[derive(Debug, Default)]
+struct PerformanceMetrics {
+    pub avg_response_time_ms: Option<f64>,
+    pub success_rate: Option<f64>,
 }
 
 impl FastPathScanner {

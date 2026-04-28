@@ -304,7 +304,7 @@ impl MultiLevelCache {
 
     /// Put data into cache with intelligent tier placement
     pub async fn put(&self, key: String, account: CachedAccount) -> Result<()> {
-        let start_time = std::time::Instant::now();
+        let _start_time = std::time::Instant::now();
         
         // Determine initial cache tier based on priority and access patterns
         match account.priority {

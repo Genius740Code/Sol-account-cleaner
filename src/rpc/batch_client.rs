@@ -1,8 +1,7 @@
 use crate::core::{Result, SolanaRecoverError};
 use crate::rpc::{ConnectionPoolTrait, RpcClientWrapper};
-use solana_client::rpc_client::RpcClient;
 use solana_account_decoder::UiAccount;
-use base64;
+use base64::Engine;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -282,7 +281,7 @@ impl BatchRpcClient {
         let client = connection_pool.get_client().await?;
         
         // Convert pubkeys to strings for the RPC call
-        let pubkey_strings: Vec<String> = pubkeys
+        let _pubkey_strings: Vec<String> = pubkeys
             .iter()
             .map(|pk| pk.to_string())
             .collect();
@@ -467,7 +466,7 @@ impl BatchRpcOperations for RpcClientWrapper {
             .into_iter()
             .map(|account_opt| account_opt.map(|account| UiAccount {
                 lamports: account.lamports,
-                data: solana_account_decoder::UiAccountData::Binary(base64::encode(&account.data), solana_account_decoder::UiAccountEncoding::Base64),
+                data: solana_account_decoder::UiAccountData::Binary(base64::engine::general_purpose::STANDARD.encode(&account.data), solana_account_decoder::UiAccountEncoding::Base64),
                 owner: account.owner.to_string(),
                 executable: account.executable,
                 rent_epoch: account.rent_epoch,
@@ -523,7 +522,7 @@ impl BatchRpcOperations for RpcClientWrapper {
                     pubkey: pubkey.to_string(),
                     account: UiAccount {
                         lamports: account.lamports,
-                        data: solana_account_decoder::UiAccountData::Binary(base64::encode(&account.data), solana_account_decoder::UiAccountEncoding::Base64),
+                        data: solana_account_decoder::UiAccountData::Binary(base64::engine::general_purpose::STANDARD.encode(&account.data), solana_account_decoder::UiAccountEncoding::Base64),
                         owner: account.owner.to_string(),
                         executable: account.executable,
                         rent_epoch: account.rent_epoch,
@@ -573,7 +572,7 @@ impl BatchRpcOperations for RpcClientWrapper {
                 pubkey: pubkey.to_string(),
                 account: UiAccount {
                     lamports: account.lamports,
-                    data: solana_account_decoder::UiAccountData::Binary(base64::encode(&account.data), solana_account_decoder::UiAccountEncoding::Base64),
+                    data: solana_account_decoder::UiAccountData::Binary(base64::engine::general_purpose::STANDARD.encode(&account.data), solana_account_decoder::UiAccountEncoding::Base64),
                     owner: account.owner.to_string(),
                     executable: account.executable,
                     rent_epoch: account.rent_epoch,

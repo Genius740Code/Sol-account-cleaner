@@ -5,7 +5,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use hmac::{Hmac, Mac};
-use base64::Engine;
 use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;

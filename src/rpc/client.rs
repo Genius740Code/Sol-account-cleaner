@@ -8,13 +8,17 @@ use solana_client::rpc_config::{RpcProgramAccountsConfig, RpcAccountInfoConfig};
 use solana_sdk::{pubkey::Pubkey, commitment_config::CommitmentConfig};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use moka::future::Cache;
 use base64::Engine;
-use std::str::FromStr;
 use tracing::{debug, warn};
+use async_trait::async_trait;
+use solana_client::nonblocking::rpc_client::RpcClient as AsyncRpcClient;
 
 pub struct RpcClientWrapper {
     pub client: Arc<RpcClient>,
+    pub async_client: Arc<AsyncRpcClient>,
     rate_limiter: Arc<dyn RateLimiter>,
     request_timeout: Duration,
     rent_cache: Cache<usize, u64>, // Cache for rent exemption queries
@@ -38,8 +42,12 @@ impl RpcClientWrapper {
             .time_to_live(Duration::from_secs(300)) // 5 minutes TTL
             .build();
         
+        // Create async client from the sync client's URL
+        let async_client = Arc::new(AsyncRpcClient::new(client.url()));
+        
         Ok(Self {
             client,
+            async_client,
             rate_limiter,
             request_timeout: Duration::from_secs(30),
             rent_cache,
@@ -53,6 +61,7 @@ impl RpcClientWrapper {
             url.to_string(),
             Duration::from_millis(timeout_ms),
         ));
+        let async_client = Arc::new(AsyncRpcClient::new(url.to_string()));
         let rate_limiter = Arc::new(TokenBucketRateLimiter::new(100));
         let program_ids = Arc::new(ProgramIds::default());
         
@@ -63,6 +72,7 @@ impl RpcClientWrapper {
         
         Ok(Self {
             client,
+            async_client,
             rate_limiter,
             request_timeout: Duration::from_millis(timeout_ms),
             rent_cache,
@@ -85,23 +95,34 @@ impl RpcClientWrapper {
         self.hierarchical_cache = Some(cache);
     }
 
+    /// Generate efficient cache key without string allocation
+    fn generate_cache_key(&self, prefix: &str, pubkey: &Pubkey, extra: Option<u64>) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        prefix.hash(&mut hasher);
+        pubkey.hash(&mut hasher);
+        if let Some(extra) = extra {
+            hasher.write_u64(extra);
+        }
+        hasher.finish()
+    }
+
     /// Ultra-fast token accounts retrieval with optimized batching
     pub async fn get_token_accounts_by_owner_ultra_fast(
         &self,
         pubkey: &Pubkey,
         batch_size: usize,
     ) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
-        let cache_key = format!("token_accounts_ultra:{}:{}", pubkey, batch_size);
+        let cache_key = self.generate_cache_key("token_accounts_ultra", pubkey, Some(batch_size as u64));
         
         // Try cache first
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key).await {
+            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key.to_string()).await {
                 debug!("Cache hit for ultra-fast token accounts of {}", pubkey);
                 return Ok(cached_accounts);
             }
         }
         
-        // Use optimized config for ultra-fast retrieval
+        // Use optimized config for ultra-fast retrieval with async client
         let config = RpcProgramAccountsConfig {
             filters: Some(vec![
                 RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
@@ -121,12 +142,15 @@ impl RpcClientWrapper {
         // Rate limit check
         self.rate_limiter.acquire().await?;
         
-        // Ultra-fast RPC call with timeout
+        // Ultra-fast async RPC call with timeout
         let start_time = Instant::now();
-        let accounts = self.client.get_program_accounts_with_config(
-            &spl_token::id(),
-            config,
-        )
+        let accounts = tokio::time::timeout(self.request_timeout, 
+            self.async_client.get_program_accounts_with_config(
+                &spl_token::id(),
+                config,
+            )
+        ).await
+        .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
         .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
         
         let response_time = start_time.elapsed();
@@ -148,18 +172,18 @@ impl RpcClientWrapper {
         
         // Cache the result
         if let Some(ref cache) = self.hierarchical_cache {
-            let _ = cache.set(&cache_key, &keyed_accounts).await;
+            let _ = cache.set(&cache_key.to_string(), &keyed_accounts).await;
         }
         
         Ok(keyed_accounts)
     }
 
     pub async fn get_all_recoverable_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
-        let cache_key = format!("recoverable_accounts:{}", pubkey);
+        let cache_key = self.generate_cache_key("recoverable_accounts", pubkey, None);
         
         // Try hierarchical cache first
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key).await {
+            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key.to_string()).await {
                 debug!("Cache hit for recoverable accounts of {}", pubkey);
                 return Ok(cached_accounts);
             }
@@ -174,7 +198,7 @@ impl RpcClientWrapper {
         
         // Cache the result
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Err(e) = cache.set(&cache_key, &all_accounts).await {
+            if let Err(e) = cache.set(&cache_key.to_string(), &all_accounts).await {
                 warn!("Failed to cache recoverable accounts for {}: {}", pubkey, e);
             } else {
                 debug!("Cached recoverable accounts for {}", pubkey);
@@ -191,67 +215,59 @@ impl RpcClientWrapper {
         let openbook_v2_id = self.program_ids.openbook_v2;
         let serum_dex_id = self.program_ids.serum_dex;
         
-        let client = self.client.clone();
-        let owner_pubkey = *pubkey;
-        let timeout = self.request_timeout;
+        // Fetch OpenBook V2 accounts asynchronously
+        let openbook_v2_accounts = {
+            self.rate_limiter.acquire().await?;
+            
+            let memcmp_filter = Memcmp::new(
+                45, // Offset where authority sits in OpenOrders account data
+                MemcmpEncodedBytes::Bytes(pubkey.to_bytes().to_vec()),
+            );
+            
+            let config = RpcProgramAccountsConfig {
+                filters: Some(vec![RpcFilterType::Memcmp(memcmp_filter)]),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
+                    data_slice: None,
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    min_context_slot: None,
+                },
+                with_context: None,
+            };
+            
+            tokio::time::timeout(self.request_timeout,
+                self.async_client.get_program_accounts_with_config(&openbook_v2_id, config)
+            ).await
+            .map_err(|_| SolanaRecoverError::NetworkError("OpenBook V2 request timeout".to_string()))?
+            .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
+        };
         
-        // Fetch OpenBook V2 accounts
-        let openbook_v2_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
-            let client = client.clone();
-            let pubkey = owner_pubkey;
-            move || {
-                // Filter for accounts where the wallet is the authority (owner) at offset 45
-                let memcmp_filter = Memcmp::new(
-                    45, // Offset where authority sits in OpenOrders account data
-                    MemcmpEncodedBytes::Bytes(pubkey.to_bytes().to_vec()),
-                );
-                
-                let config = RpcProgramAccountsConfig {
-                    filters: Some(vec![RpcFilterType::Memcmp(memcmp_filter)]),
-                    account_config: RpcAccountInfoConfig {
-                        encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
-                        data_slice: None,
-                        commitment: Some(CommitmentConfig::confirmed()),
-                        min_context_slot: None,
-                    },
-                    with_context: None,
-                };
-                
-                client.get_program_accounts_with_config(&openbook_v2_id, config)
-            }
-        })).await
-        .map_err(|_| SolanaRecoverError::NetworkError("OpenBook V2 request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
-        
-        // Fetch Serum DEX accounts (legacy)
-        let serum_dex_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
-            let client = client.clone();
-            let pubkey = owner_pubkey;
-            move || {
-                // Filter for accounts where the wallet is the authority (owner) at offset 45
-                let memcmp_filter = Memcmp::new(
-                    45, // Offset where authority sits in OpenOrders account data
-                    MemcmpEncodedBytes::Bytes(pubkey.to_bytes().to_vec()),
-                );
-                
-                let config = RpcProgramAccountsConfig {
-                    filters: Some(vec![RpcFilterType::Memcmp(memcmp_filter)]),
-                    account_config: RpcAccountInfoConfig {
-                        encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
-                        data_slice: None,
-                        commitment: Some(CommitmentConfig::confirmed()),
-                        min_context_slot: None,
-                    },
-                    with_context: None,
-                };
-                
-                client.get_program_accounts_with_config(&serum_dex_id, config)
-            }
-        })).await
-        .map_err(|_| SolanaRecoverError::NetworkError("Serum DEX request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+        // Fetch Serum DEX accounts asynchronously
+        let serum_dex_accounts = {
+            self.rate_limiter.acquire().await?;
+            
+            let memcmp_filter = Memcmp::new(
+                45, // Offset where authority sits in OpenOrders account data
+                MemcmpEncodedBytes::Bytes(pubkey.to_bytes().to_vec()),
+            );
+            
+            let config = RpcProgramAccountsConfig {
+                filters: Some(vec![RpcFilterType::Memcmp(memcmp_filter)]),
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(solana_account_decoder::UiAccountEncoding::Base64),
+                    data_slice: None,
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    min_context_slot: None,
+                },
+                with_context: None,
+            };
+            
+            tokio::time::timeout(self.request_timeout,
+                self.async_client.get_program_accounts_with_config(&serum_dex_id, config)
+            ).await
+            .map_err(|_| SolanaRecoverError::NetworkError("Serum DEX request timeout".to_string()))?
+            .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
+        };
         
         // Convert program accounts to RpcKeyedAccount format
         let mut all_openbook_accounts = Vec::new();
@@ -301,11 +317,11 @@ impl RpcClientWrapper {
     }
 
     pub async fn get_token_accounts(&self, pubkey: &Pubkey) -> Result<Vec<solana_client::rpc_response::RpcKeyedAccount>> {
-        let cache_key = format!("token_accounts:{}", pubkey);
+        let cache_key = self.generate_cache_key("token_accounts", pubkey, None);
         
         // Try hierarchical cache first
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key).await {
+            if let Ok(Some(cached_accounts)) = cache.get::<Vec<solana_client::rpc_response::RpcKeyedAccount>>(&cache_key.to_string()).await {
                 debug!("Cache hit for token accounts of {}", pubkey);
                 return Ok(cached_accounts);
             }
@@ -315,37 +331,31 @@ impl RpcClientWrapper {
         
         let token_program_id = spl_token::id();
         let token_2022_program_id = spl_token_2022::id();
-        let client = self.client.clone();
-        let pubkey = *pubkey;
-        let timeout = self.request_timeout;
         
-        // Fetch standard Token accounts
-        let standard_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
-            let client = client.clone();
-            move || {
-                client.get_token_accounts_by_owner(
-                    &pubkey,
+        // Fetch standard Token accounts asynchronously
+        let standard_accounts = {
+            tokio::time::timeout(self.request_timeout,
+                self.async_client.get_token_accounts_by_owner(
+                    pubkey,
                     TokenAccountsFilter::ProgramId(token_program_id),
                 )
-            }
-        })).await
-        .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+            ).await
+            .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
+            .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
+        };
         
-        // Fetch Token-2022 accounts
-        let token_2022_accounts = tokio::time::timeout(timeout, tokio::task::spawn_blocking({
-            let client = client.clone();
-            move || {
-                client.get_token_accounts_by_owner(
-                    &pubkey,
+        // Fetch Token-2022 accounts asynchronously
+        let token_2022_accounts = {
+            self.rate_limiter.acquire().await?;
+            tokio::time::timeout(self.request_timeout,
+                self.async_client.get_token_accounts_by_owner(
+                    pubkey,
                     TokenAccountsFilter::ProgramId(token_2022_program_id),
                 )
-            }
-        })).await
-        .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+            ).await
+            .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
+            .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
+        };
         
         // Combine results from both programs
         let mut all_accounts = standard_accounts;
@@ -353,7 +363,7 @@ impl RpcClientWrapper {
         
         // Cache the result
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Err(e) = cache.set(&cache_key, &all_accounts).await {
+            if let Err(e) = cache.set(&cache_key.to_string(), &all_accounts).await {
                 warn!("Failed to cache token accounts for {}: {}", pubkey, e);
             } else {
                 debug!("Cached token accounts for {}", pubkey);
@@ -364,11 +374,11 @@ impl RpcClientWrapper {
     }
 
     pub async fn get_balance(&self, pubkey: &Pubkey) -> Result<u64> {
-        let cache_key = format!("balance:{}", pubkey);
+        let cache_key = self.generate_cache_key("balance", pubkey, None);
         
         // Try hierarchical cache first (with shorter TTL for balance)
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Ok(Some(cached_balance)) = cache.get::<u64>(&cache_key).await {
+            if let Ok(Some(cached_balance)) = cache.get::<u64>(&cache_key.to_string()).await {
                 debug!("Cache hit for balance of {}", pubkey);
                 return Ok(cached_balance);
             }
@@ -376,21 +386,16 @@ impl RpcClientWrapper {
         
         self.rate_limiter.acquire().await?;
         
-        let client = self.client.clone();
-        let pubkey = *pubkey;
-        let timeout = self.request_timeout;
-        
-        let balance = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_balance_with_commitment(&pubkey, CommitmentConfig::confirmed())
-        })).await
+        let balance = tokio::time::timeout(self.request_timeout,
+            self.async_client.get_balance_with_commitment(pubkey, CommitmentConfig::confirmed())
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
         .value;
         
         // Cache the result
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Err(e) = cache.set(&cache_key, &balance).await {
+            if let Err(e) = cache.set(&cache_key.to_string(), &balance).await {
                 warn!("Failed to cache balance for {}: {}", pubkey, e);
             } else {
                 debug!("Cached balance for {}", pubkey);
@@ -401,12 +406,9 @@ impl RpcClientWrapper {
     }
     
     pub async fn get_health(&self) -> Result<()> {
-        let client = self.client.clone();
-        let timeout = Duration::from_secs(5);
-        
-        let _ = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_latest_blockhash()
-        })).await
+        let _ = tokio::time::timeout(Duration::from_secs(5),
+            self.async_client.get_latest_blockhash()
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Health check timeout".to_string()))?
         .map_err(|_| SolanaRecoverError::NetworkError("Endpoint unhealthy".to_string()))?;
         
@@ -414,11 +416,11 @@ impl RpcClientWrapper {
     }
     
     pub async fn get_account_info(&self, pubkey: &Pubkey) -> Result<solana_account_decoder::UiAccount> {
-        let cache_key = format!("account_info:{}", pubkey);
+        let cache_key = self.generate_cache_key("account_info", pubkey, None);
         
         // Try hierarchical cache first
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Ok(Some(cached_account)) = cache.get::<solana_account_decoder::UiAccount>(&cache_key).await {
+            if let Ok(Some(cached_account)) = cache.get::<solana_account_decoder::UiAccount>(&cache_key.to_string()).await {
                 debug!("Cache hit for account info of {}", pubkey);
                 return Ok(cached_account);
             }
@@ -426,16 +428,11 @@ impl RpcClientWrapper {
         
         self.rate_limiter.acquire().await?;
         
-        let client = self.client.clone();
-        let pubkey = *pubkey;
-        let timeout = self.request_timeout;
-        
-        let account = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_account_with_commitment(&pubkey, CommitmentConfig::confirmed())
-        })).await
+        let account = tokio::time::timeout(self.request_timeout,
+            self.async_client.get_account_with_commitment(pubkey, CommitmentConfig::confirmed())
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
         .value
         .ok_or_else(|| SolanaRecoverError::InternalError("Account not found".to_string()))
         .map(|account| {
@@ -455,7 +452,7 @@ impl RpcClientWrapper {
         
         // Cache the result
         if let Some(ref cache) = self.hierarchical_cache {
-            if let Err(e) = cache.set(&cache_key, &account).await {
+            if let Err(e) = cache.set(&cache_key.to_string(), &account).await {
                 warn!("Failed to cache account info for {}: {}", pubkey, e);
             } else {
                 debug!("Cached account info for {}", pubkey);
@@ -468,16 +465,11 @@ impl RpcClientWrapper {
     pub async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> Result<Vec<Option<solana_account_decoder::UiAccount>>> {
         self.rate_limiter.acquire().await?;
         
-        let client = self.client.clone();
-        let pubkeys = pubkeys.to_vec();
-        let timeout = self.request_timeout;
-        
-        Ok(tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_multiple_accounts_with_commitment(&pubkeys, CommitmentConfig::confirmed())
-        })).await
+        Ok(tokio::time::timeout(self.request_timeout,
+            self.async_client.get_multiple_accounts_with_commitment(pubkeys, CommitmentConfig::confirmed())
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?
         .value
         .into_iter()
         .map(|account_opt| account_opt.map(|account| {
@@ -499,16 +491,11 @@ impl RpcClientWrapper {
     pub async fn send_transaction(&self, transaction: &solana_sdk::transaction::Transaction) -> Result<String> {
         self.rate_limiter.acquire().await?;
         
-        let client = self.client.clone();
-        let transaction = transaction.clone();
-        let timeout = self.request_timeout;
-        
-        let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.send_and_confirm_transaction(&transaction)
-        })).await
+        let result = tokio::time::timeout(self.request_timeout,
+            self.async_client.send_and_confirm_transaction(transaction)
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Transaction timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(format!("Task join error: {}", e)))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
         
         Ok(result.to_string())
     }
@@ -520,17 +507,13 @@ impl RpcClientWrapper {
     pub async fn get_signature_status_with_commitment(&self, signature: &str, commitment: CommitmentConfig) -> Result<Option<bool>> {
         self.rate_limiter.acquire().await?;
         
-        let client = self.client.clone();
         let signature = signature.parse::<solana_sdk::signature::Signature>()
             .map_err(|_| SolanaRecoverError::InvalidInput("Invalid signature".to_string()))?;
-        let timeout = self.request_timeout;
-        
-        let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_signature_status_with_commitment(&signature, commitment)
-        })).await
+        let result = tokio::time::timeout(self.request_timeout,
+            self.async_client.get_signature_status_with_commitment(&signature, commitment)
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
         
         Ok(result.map(|status| status.is_ok()))
     }
@@ -543,19 +526,14 @@ impl RpcClientWrapper {
         
         self.rate_limiter.acquire().await?;
         
-        let client = self.client.clone();
-        let timeout = self.request_timeout;
-        let cache = self.rent_cache.clone();
-        
-        let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-            client.get_minimum_balance_for_rent_exemption(data_size)
-        })).await
+        let result = tokio::time::timeout(self.request_timeout,
+            self.async_client.get_minimum_balance_for_rent_exemption(data_size)
+        ).await
         .map_err(|_| SolanaRecoverError::NetworkError("Request timeout".to_string()))?
-        .map_err(|e| SolanaRecoverError::InternalError(e.to_string()))?
-        .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+        .map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
         
         // Cache the result
-        cache.insert(data_size, result).await;
+        self.rent_cache.insert(data_size, result).await;
         
         Ok(result)
     }

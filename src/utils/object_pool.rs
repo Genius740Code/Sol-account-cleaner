@@ -1,17 +1,16 @@
-use crate::core::{Result, SolanaRecoverError};
-use std::sync::{Arc, Mutex};
+use crate::core::{Result};
+use std::sync::Arc;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, RwLock};
 use serde::{Serialize, Deserialize};
-use std::any::Any;
-use std::marker::PhantomData;
 
 /// Generic object pool for efficient memory management
 pub struct ObjectPool<T> {
     objects: Arc<tokio::sync::Mutex<VecDeque<T>>>,
     factory: Box<dyn Fn() -> T + Send + Sync>,
     reset_fn: Option<Box<dyn Fn(&mut T) + Send + Sync>>,
+    #[allow(dead_code)]
     max_size: usize,
     current_size: Arc<std::sync::atomic::AtomicUsize>,
     metrics: Arc<RwLock<PoolMetrics>>,
@@ -112,7 +111,7 @@ where
 
     /// Get an object from the pool
     pub async fn get(&self) -> PooledObject<T> {
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
         
         // Try to get from pool first
         let mut objects = self.objects.lock().await;
@@ -153,6 +152,7 @@ where
     }
 
     /// Return an object to the pool
+    #[allow(dead_code)]
     async fn return_object(&self, object: T) {
         let current_size = self.current_size.load(std::sync::atomic::Ordering::Relaxed);
         
@@ -163,19 +163,20 @@ where
             
             // Update metrics
             if self.config.enable_metrics {
-                let mut metrics = self.metrics.write().await;
+                let _metrics = self.metrics.write().await;
                 // Note: lifetime tracking disabled since checkout_time was removed
             }
         } else {
             // Pool is full, discard the object
             if self.config.enable_metrics {
-                let mut metrics = self.metrics.write().await;
-                metrics.total_discarded += 1;
+                let mut _metrics = self.metrics.write().await;
+                _metrics.total_discarded += 1;
             }
         }
     }
 
     /// Preallocate initial objects
+    #[allow(dead_code)]
     async fn preallocate_initial_objects(&self) {
         let mut objects = self.objects.lock().await;
         let initial_count = std::cmp::min(self.config.initial_size, self.config.max_size);
@@ -201,6 +202,7 @@ where
     }
 
     /// Perform cleanup of idle objects
+    #[allow(dead_code)]
     async fn perform_cleanup(&self, _max_idle_time: Duration) -> Result<()> {
         // For generic objects, we can't track idle time without additional metadata
         // This is a placeholder for more sophisticated cleanup logic
@@ -216,6 +218,7 @@ where
     }
 
     /// Update lifetime metrics
+    #[allow(dead_code)]
     fn update_lifetime_metrics(&self, metrics: &mut PoolMetrics, lifetime: f64) {
         let total_reused = metrics.total_reused;
         if total_reused > 0 {

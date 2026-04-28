@@ -4,10 +4,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, Mutex, RwLock};
 use crossbeam::deque::{Injector, Stealer, Worker};
-use std::thread;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-use serde::{Serialize, Deserialize};
-use futures::stream::{self};
+use serde::Serialize;
+use futures::stream;
 use uuid::Uuid;
 
 /// Adaptive parallel processor with work-stealing and dynamic resource management
@@ -103,7 +102,7 @@ impl Default for ProcessorConfig {
 }
 
 impl AdaptiveParallelProcessor {
-    pub fn new(scanner: Arc<WalletScanner>, config: ProcessorConfig) -> Result<Self> {
+    pub fn new(_scanner: Arc<WalletScanner>, config: ProcessorConfig) -> Result<Self> {
         // Create work queue and stealers for each worker
         let work_queue = Arc::new(Injector::new());
         let mut stealers = Vec::new();
@@ -276,7 +275,7 @@ impl AdaptiveParallelProcessor {
 
     /// Worker loop with work-stealing
     async fn worker_loop(
-        worker_id: usize,
+        _worker_id: usize,
         work_queue: Arc<Injector<WalletTask>>,
         stealers: &[Stealer<WalletTask>],
         results: Arc<Mutex<Vec<ScanResult>>>,
