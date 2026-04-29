@@ -110,7 +110,7 @@ impl BatchProcessor {
         let start_time = Instant::now();
         
         // Use intelligent processor if available, otherwise fall back to legacy processing
-        if let Some(processor) = &self.intelligent_processor {
+        if let Some(_processor) = &self.intelligent_processor {
             info!("Using intelligent parallel processor for batch of {} wallets", request.wallet_addresses.len());
             // Note: This requires a mutable processor, so we need to handle this differently
             // For now, we'll clone the processor or use a different approach
@@ -126,7 +126,7 @@ impl BatchProcessor {
                 task_timeout: std::time::Duration::from_secs(30),
                 worker_idle_timeout: std::time::Duration::from_secs(60),
             };
-            let mut processor_clone = AdaptiveParallelProcessor::new(
+            let processor_clone = AdaptiveParallelProcessor::new(
                 self.scanner.clone(),
                 processor_config,
             ).map_err(|e| SolanaRecoverError::InternalError(format!("Failed to create processor clone: {}", e)))?;

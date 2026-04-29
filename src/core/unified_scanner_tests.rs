@@ -222,20 +222,23 @@ mod tests {
     #[tokio::test]
     async fn test_retry_mechanism_success() {
         let retry = RetryMechanism::with_default_policy();
-        let mut call_count = 0;
+        let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         
-        let result = retry.execute(|| async {
-            call_count += 1;
-            if call_count < 2 {
-                Err(crate::core::SolanaRecoverError::TimeoutError("temporary".to_string()))
-            } else {
-                Ok("success")
+        let result = retry.execute(|| {
+            let count = call_count.clone();
+            async move {
+                let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if current < 1 {
+                    Err(crate::core::SolanaRecoverError::TimeoutError("temporary".to_string()))
+                } else {
+                    Ok("success")
+                }
             }
         }).await;
         
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
-        assert_eq!(call_count, 2);
+        assert_eq!(call_count.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 
     #[tokio::test]

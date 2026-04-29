@@ -7,7 +7,6 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use flate2::{Compress, Decompress, Compression};
-use bytes::{Bytes, BytesMut};
 
 /// Multi-level cache architecture with L1 (hot), L2 (warm), and L3 (cold) tiers
 pub struct MultiLevelCache {

@@ -2,8 +2,8 @@ use crate::core::{Result};
 use std::sync::Arc;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-use tokio::sync::{Semaphore, RwLock};
-use serde::{Serialize, Deserialize};
+use tokio::sync::RwLock;
+use serde::Serialize;
 
 /// Generic object pool for efficient memory management
 pub struct ObjectPool<T> {

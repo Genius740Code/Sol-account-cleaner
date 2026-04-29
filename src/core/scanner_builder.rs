@@ -7,7 +7,6 @@ use crate::core::{Result, SolanaRecoverError};
 use crate::core::unified_scanner::{UnifiedWalletScanner, UnifiedScannerConfig, PerformanceMode};
 use crate::rpc::{ConnectionPoolTrait};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
 /// Trait abstractions for dependency injection
 #[async_trait::async_trait]

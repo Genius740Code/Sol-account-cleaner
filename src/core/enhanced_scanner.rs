@@ -264,7 +264,7 @@ impl EnhancedWalletScanner {
     /// Process batch with memory tracking and optimization
     async fn process_batch_with_memory_tracking(
         &self,
-        processor: &Arc<AdaptiveParallelProcessor>,
+        _processor: &Arc<AdaptiveParallelProcessor>,
         request: &BatchScanRequest,
     ) -> Result<BatchScanResult> {
         let _start_time = Instant::now();
@@ -285,7 +285,7 @@ impl EnhancedWalletScanner {
             task_timeout: std::time::Duration::from_secs(30),
             worker_idle_timeout: std::time::Duration::from_secs(60),
         };
-        let mut local_processor = AdaptiveParallelProcessor::new(
+        let local_processor = AdaptiveParallelProcessor::new(
             Arc::new(crate::core::scanner::WalletScanner::new(self.connection_pool.clone())),
             processor_config,
         )?;

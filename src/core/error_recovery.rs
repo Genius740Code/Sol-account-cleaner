@@ -6,8 +6,8 @@
 use crate::core::{Result, SolanaRecoverError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, Semaphore};
-use tracing::{info, warn, error, debug};
+use tokio::sync::RwLock;
+use tracing::{info, warn, error};
 use serde::{Deserialize, Serialize};
 use async_trait::async_trait;
 
@@ -339,9 +339,9 @@ impl RetryMechanism {
     }
     
     /// Execute an operation with retry logic
-    pub async fn execute<F, T, Fut>(&self, operation: F) -> Result<T>
+    pub async fn execute<F, T, Fut>(&self, mut operation: F) -> Result<T>
     where
-        F: Fn() -> Fut,
+        F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T>>,
     {
         let mut last_error = None;
@@ -693,19 +693,22 @@ mod tests {
     #[tokio::test]
     async fn test_retry_mechanism_success() {
         let retry = RetryMechanism::with_default_policy();
-        let mut call_count = 0;
+        let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         
-        let result = retry.execute(|| async {
-            call_count += 1;
-            if call_count < 2 {
-                Err(SolanaRecoverError::InternalError("temporary".to_string()))
-            } else {
-                Ok("success")
+        let result = retry.execute(|| {
+            let count = call_count.clone();
+            async move {
+                let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if current < 1 {
+                    Err(SolanaRecoverError::InternalError("temporary".to_string()))
+                } else {
+                    Ok("success")
+                }
             }
         }).await;
         
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
-        assert_eq!(call_count, 2);
+        assert_eq!(call_count.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 }

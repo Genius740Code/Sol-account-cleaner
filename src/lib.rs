@@ -111,7 +111,8 @@ pub async fn scan_wallet_ultra_fast(
     wallet_address: &str,
     rpc_endpoint: Option<&str>,
 ) -> core::Result<WalletInfo> {
-    use core::{ScannerFactory, UnifiedScannerConfig};
+    use core::ScannerFactory;
+    use core::unified_scanner::UnifiedScannerConfig;
     use core::unified_scanner::PerformanceMode;
     use core::types::RpcEndpoint;
     use rpc::ConnectionPool;

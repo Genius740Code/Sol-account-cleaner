@@ -1,6 +1,6 @@
 //! Cache utilities and traits
 
-use crate::core::{Result, SolanaRecoverError};
+use crate::core::Result;
 use async_trait::async_trait;
 
 /// Trait for cache implementations

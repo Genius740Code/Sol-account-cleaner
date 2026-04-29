@@ -187,7 +187,7 @@ impl CircuitBreaker {
     where
         F: std::future::Future<Output = Result<T>>,
     {
-        self.execute_with_type("default", operation).await
+        Box::pin(self.execute_with_type("default", operation)).await
     }
 
     /// Execute an operation with circuit breaker protection for a specific request type
@@ -546,7 +546,7 @@ mod tests {
 
         // Fail twice to open the circuit
         for _ in 0..2 {
-            let result = breaker.execute(async { 
+            let result: Result<String> = breaker.execute(async { 
                 Err(SolanaRecoverError::NetworkError("Test error".to_string()))
             }).await;
             assert!(result.is_err());
@@ -573,7 +573,7 @@ mod tests {
 
         // Fail twice to open the circuit
         for _ in 0..2 {
-            let _ = breaker.execute(async { 
+            let _: Result<String> = breaker.execute(async { 
                 Err(SolanaRecoverError::NetworkError("Test error".to_string()))
             }).await;
         }

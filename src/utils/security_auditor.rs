@@ -494,7 +494,7 @@ mod tests {
         );
         
         // Sign the entry
-        let signed_entry = auditor.sign_entry(entry.clone()).await.unwrap();
+        let mut signed_entry = auditor.sign_entry(entry.clone()).await.unwrap();
         
         // Tamper with the entry
         signed_entry.operation = "tampered_operation".to_string();

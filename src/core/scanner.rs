@@ -78,7 +78,7 @@ impl WalletScanner {
 
     pub async fn scan_batch_parallel(&mut self, request: &BatchScanRequest) -> Result<BatchScanResult> {
         match &mut self.parallel_processor {
-            Some(processor) => {
+            Some(_processor) => {
                 // Create a new processor for this batch since we can't modify the Arc
                 let processor_config = crate::core::adaptive_parallel_processor::ProcessorConfig {
                     max_workers: 4,
@@ -91,7 +91,7 @@ impl WalletScanner {
                     task_timeout: std::time::Duration::from_secs(30),
                     worker_idle_timeout: std::time::Duration::from_secs(60),
                 };
-                let mut temp_processor = AdaptiveParallelProcessor::new(
+                let temp_processor = AdaptiveParallelProcessor::new(
                     Arc::new(crate::core::scanner::WalletScanner::new(self.connection_pool.clone())),
                     processor_config,
                 )?;

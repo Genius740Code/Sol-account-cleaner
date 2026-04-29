@@ -10,7 +10,7 @@ use std::fs;
 use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
+use tracing::{info, error};
 use std::time::{Duration, Instant, SystemTime};
 use std::collections::HashMap;
 

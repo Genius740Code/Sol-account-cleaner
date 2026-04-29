@@ -13,7 +13,6 @@ use std::collections::hash_map::DefaultHasher;
 use moka::future::Cache;
 use base64::Engine;
 use tracing::{debug, warn};
-use async_trait::async_trait;
 use solana_client::nonblocking::rpc_client::RpcClient as AsyncRpcClient;
 
 pub struct RpcClientWrapper {

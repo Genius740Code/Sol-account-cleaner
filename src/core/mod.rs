@@ -34,21 +34,25 @@ mod tests;
 pub use types::*;
 pub use errors::*;
 pub use fee_calculator::*;
-pub use processor::*;
+// Import specific items from processor to avoid conflicts
+pub use processor::{BatchProcessor, ProcessorConfig};
 pub use recovery::*;
 pub use scanner::*;
-pub use error_handling::*;
-pub use unified_scanner::*;
+// Import specific items from error_handling to avoid conflicts
+pub use error_handling::{RetryConfig, CircuitBreakerConfig, ErrorMetrics, CircuitBreakerState, CircuitBreaker, ErrorHandler, ErrorClassification, ErrorReporter, ErrorReport, ErrorSummary};
+// Import specific items from unified_scanner to avoid conflicts
+pub use unified_scanner::{PerformanceMode as UnifiedPerformanceMode, ScanStrategy, UnifiedScannerConfig, ScanContext, UnifiedWalletScanner};
 pub use scanner_builder::*;
-pub use error_recovery::*;
+// Import specific items from error_recovery to avoid conflicts  
+pub use error_recovery::{CircuitState, CircuitBreakerConfig as RecoveryCircuitConfig, RetryPolicy, CircuitBreaker as RecoveryCircuitBreaker, RetryMechanism, ResilientScanner};
 pub use config_management::*;
 
 // Legacy exports (deprecated)
 #[deprecated(note = "Use unified_scanner module instead")]
 pub use enhanced_scanner::*;
 #[deprecated(note = "Use unified_scanner module instead")]
-pub use adaptive_parallel_processor::*;
+pub use adaptive_parallel_processor::{AdaptiveParallelProcessor, ProcessorConfig as LegacyProcessorConfig};
 #[deprecated(note = "Use unified_scanner module instead")]
-pub use optimized_scanner::*;
+pub use optimized_scanner::{OptimizedWalletScanner, PerformanceMode as OptimizedPerformanceMode};
 #[deprecated(note = "Use unified_scanner module instead")]
 pub use ultra_fast_scanner::*;

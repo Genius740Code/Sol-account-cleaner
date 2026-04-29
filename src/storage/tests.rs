@@ -45,7 +45,7 @@ mod tests {
             wallet_address: "11111111111111111111111111111112".to_string(),
             status: ScanStatus::Completed,
             result: None,
-            error: None,
+            error_message: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -79,7 +79,7 @@ mod tests {
             wallet_address: "11111111111111111111111111111112".to_string(),
             status: ScanStatus::Completed,
             result: None,
-            error: None,
+            error_message: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -126,7 +126,7 @@ mod tests {
             wallet_address: "11111111111111111111111111111112".to_string(),
             status: ScanStatus::Completed,
             result: None,
-            error: None,
+            error_message: None,
             created_at: chrono::Utc::now(),
         };
 

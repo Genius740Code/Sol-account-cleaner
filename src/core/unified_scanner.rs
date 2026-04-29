@@ -3,11 +3,10 @@
 //! This module consolidates all scanner functionality into a single, cohesive architecture
 //! using the strategy pattern to eliminate code duplication and improve maintainability.
 
-use crate::core::{Result, SolanaRecoverError, ScanResult, ScanStatus, BatchScanRequest, BatchScanResult, WalletInfo};
+use crate::core::{Result, SolanaRecoverError, ScanResult, BatchScanRequest, BatchScanResult};
 use crate::rpc::{ConnectionPoolTrait};
 use crate::utils::cache::{CacheTrait, MetricsTrait};
 use std::sync::Arc;
-use uuid::Uuid;
 use std::time::Instant;
 use chrono::Utc;
 use tracing::{info};

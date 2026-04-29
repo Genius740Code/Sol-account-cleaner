@@ -6,7 +6,6 @@ use tokio::sync::{Semaphore, Mutex, RwLock};
 use crossbeam::deque::{Injector, Stealer, Worker};
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use serde::Serialize;
-use futures::stream;
 use uuid::Uuid;
 
 /// Adaptive parallel processor with work-stealing and dynamic resource management
