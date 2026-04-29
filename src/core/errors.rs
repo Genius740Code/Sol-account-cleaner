@@ -79,6 +79,9 @@ pub enum SolanaRecoverError {
     
     #[error("Circuit breaker open: {0}")]
     CircuitBreakerOpen(String),
+    
+    #[error("NFT error: {0}")]
+    NftError(String),
 }
 
 impl Clone for SolanaRecoverError {
@@ -110,6 +113,7 @@ impl Clone for SolanaRecoverError {
             SolanaRecoverError::TransactionError(msg) => SolanaRecoverError::TransactionError(msg.clone()),
             SolanaRecoverError::SecurityError(msg) => SolanaRecoverError::SecurityError(msg.clone()),
             SolanaRecoverError::CircuitBreakerOpen(msg) => SolanaRecoverError::CircuitBreakerOpen(msg.clone()),
+            SolanaRecoverError::NftError(msg) => SolanaRecoverError::NftError(msg.clone()),
         }
     }
 }
@@ -129,6 +133,13 @@ impl From<std::io::Error> for SolanaRecoverError {
 impl From<rusqlite::Error> for SolanaRecoverError {
     fn from(err: rusqlite::Error) -> Self {
         SolanaRecoverError::RusqliteError(err.to_string())
+    }
+}
+
+#[cfg(feature = "nft")]
+impl From<crate::nft::errors::NftError> for SolanaRecoverError {
+    fn from(err: crate::nft::errors::NftError) -> Self {
+        SolanaRecoverError::NftError(format!("{}", err))
     }
 }
 

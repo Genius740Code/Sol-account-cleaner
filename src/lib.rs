@@ -52,8 +52,16 @@ pub mod utils;
 pub mod config;
 pub mod api;
 
+// Export NFT module
+#[cfg(feature = "nft")]
+pub mod nft;
+
 // Re-export commonly used types
 pub use core::*;
+
+// Re-export NFT types when feature is enabled
+#[cfg(feature = "nft")]
+pub use nft::*;
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -268,6 +276,292 @@ pub async fn recover_sol(
     let recovery_manager = RecoveryManager::new(connection_pool, wallet_manager, config, fee_structure);
     
     recovery_manager.recover_sol(request).await
+}
+
+/// Convenience function for ultra-fast NFT scanning
+/// 
+/// This function provides the fastest possible NFT scanning using:
+/// - Ultra-fast performance mode
+/// - Maximum parallelization
+/// - Optimized caching
+/// - Minimal validation
+/// 
+/// # Arguments
+/// 
+/// * `wallet_address` - The Solana wallet address to scan for NFTs
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns an `NftScanResult` containing comprehensive NFT analysis.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::scan_wallet_nfts_ultra_fast;
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let result = scan_wallet_nfts_ultra_fast("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None).await?;
+///     println!("Found {} NFTs with total value {} SOL", 
+///         result.nfts.len(), result.total_estimated_value_lamports as f64 / 1_000_000_000.0);
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "nft")]
+pub async fn scan_wallet_nfts_ultra_fast(
+    wallet_address: &str,
+    rpc_endpoint: Option<&str>,
+) -> core::Result<NftScanResult> {
+    use nft::scanner::create_ultra_fast_nft_scanner;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use std::sync::Arc;
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 200, // Higher rate limit for ultra-fast
+        timeout_ms: 5000,     // Shorter timeout for ultra-fast
+        healthy: true,
+    };
+    
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 16));
+    let scanner = create_ultra_fast_nft_scanner(connection_pool)?;
+    
+    let scan_result = scanner.scan_wallet_nfts(wallet_address).await?;
+    
+    Ok(scan_result)
+}
+
+/// Convenience function for balanced NFT scanning
+/// 
+/// This function provides balanced NFT scanning with comprehensive analysis
+/// including metadata, valuation, security validation, and portfolio analysis.
+/// 
+/// # Arguments
+/// 
+/// * `wallet_address` - The Solana wallet address to scan for NFTs
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns an `NftScanResult` containing comprehensive NFT analysis.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::scan_wallet_nfts;
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let result = scan_wallet_nfts("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None).await?;
+///     println!("Found {} NFTs with {} security issues", 
+///         result.nfts.len(), result.security_issues.len());
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "nft")]
+pub async fn scan_wallet_nfts(
+    wallet_address: &str,
+    rpc_endpoint: Option<&str>,
+) -> core::Result<NftScanResult> {
+    use nft::scanner::create_nft_scanner;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use std::sync::Arc;
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: 30000,
+        healthy: true,
+    };
+    
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
+    let scanner = create_nft_scanner(connection_pool)?;
+    
+    let scan_result = scanner.scan_wallet_nfts(wallet_address).await?;
+    
+    Ok(scan_result)
+}
+
+/// Convenience function for thorough NFT scanning
+/// 
+/// This function provides thorough NFT scanning with maximum validation
+/// and comprehensive security analysis.
+/// 
+/// # Arguments
+/// 
+/// * `wallet_address` - The Solana wallet address to scan for NFTs
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns an `NftScanResult` containing thorough NFT analysis.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::scan_wallet_nfts_thorough;
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let result = scan_wallet_nfts_thorough("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None).await?;
+///     println!("Thorough scan completed with {} insights", 
+///         result.portfolio.as_ref().map(|p| p.quality_metrics.diversity_score).unwrap_or(0.0));
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "nft")]
+pub async fn scan_wallet_nfts_thorough(
+    wallet_address: &str,
+    rpc_endpoint: Option<&str>,
+) -> core::Result<NftScanResult> {
+    use nft::scanner::create_thorough_nft_scanner;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use std::sync::Arc;
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 50, // Lower rate limit for thorough scanning
+        timeout_ms: 60000,   // Longer timeout for thorough scanning
+        healthy: true,
+    };
+    
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 4));
+    let scanner = create_thorough_nft_scanner(connection_pool)?;
+    
+    let scan_result = scanner.scan_wallet_nfts(wallet_address).await?;
+    
+    Ok(scan_result)
+}
+
+/// Convenience function for batch NFT scanning
+/// 
+/// This function scans multiple wallets in parallel with optimized performance.
+/// 
+/// # Arguments
+/// 
+/// * `wallet_addresses` - Vector of Solana wallet addresses to scan
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns a vector of `NftScanResult` for each wallet.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::scan_wallets_nfts_batch;
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let wallets = vec![
+///         "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM".to_string(),
+///         "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
+///     ];
+///     let results = scan_wallets_nfts_batch(&wallets, None).await?;
+///     for result in results {
+///         println!("Wallet {}: {} NFTs", result.wallet_address, result.nfts.len());
+///     }
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "nft")]
+pub async fn scan_wallets_nfts_batch(
+    wallet_addresses: &[String],
+    rpc_endpoint: Option<&str>,
+) -> core::Result<Vec<NftScanResult>> {
+    use nft::scanner::create_nft_scanner;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use std::sync::Arc;
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: 30000,
+        healthy: true,
+    };
+    
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
+    let scanner = create_nft_scanner(connection_pool)?;
+    
+    let scan_results = scanner.scan_wallets_batch(wallet_addresses).await?;
+    
+    Ok(scan_results)
+}
+
+/// Convenience function for NFT metadata fetching only
+/// 
+/// This function fetches NFT metadata without valuation or security analysis.
+/// 
+/// # Arguments
+/// 
+/// * `mint_address` - The NFT mint address
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// 
+/// # Returns
+/// 
+/// Returns an `NftInfo` containing the NFT metadata.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::fetch_nft_metadata;
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let nft_info = fetch_nft_metadata("mint_address_here", None).await?;
+///     println!("NFT Name: {:?}", nft_info.name);
+///     println!("NFT Symbol: {:?}", nft_info.symbol);
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "nft")]
+pub async fn fetch_nft_metadata(
+    mint_address: &str,
+    rpc_endpoint: Option<&str>,
+) -> core::Result<NftInfo> {
+    use nft::scanner::create_nft_scanner;
+    use nft::cache::CacheManager;
+    use nft::metadata::MetadataFetcher;
+    use nft::metadata::MetadataConfig;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use std::sync::Arc;
+    
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: 30000,
+        healthy: true,
+    };
+    
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
+    let cache_manager = Arc::new(CacheManager::new(Default::default()));
+    let metadata_config = MetadataConfig::default();
+    
+    let metadata_fetcher = Arc::new(MetadataFetcher::new(
+        connection_pool,
+        metadata_config,
+        cache_manager,
+    )?);
+    
+    let nft_info = metadata_fetcher.fetch_nft_metadata(mint_address).await?;
+    
+    Ok(nft_info)
 }
 
 #[cfg(test)]
