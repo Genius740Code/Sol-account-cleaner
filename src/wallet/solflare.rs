@@ -110,7 +110,9 @@ impl SolflareProvider {
                     error: None,
                     timestamp: chrono::Utc::now(),
                 };
-                Ok(response.result.unwrap())
+                response.result.ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No response result".to_string())
+                })
             }
             "signTransaction" => {
                 // Simulate transaction signing
@@ -138,7 +140,9 @@ impl SolflareProvider {
                     error: None,
                     timestamp: chrono::Utc::now(),
                 };
-                Ok(response.result.unwrap())
+                response.result.ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No response result".to_string())
+                })
             }
             "disconnect" => {
                 let response = SolflareResponse {
@@ -149,7 +153,9 @@ impl SolflareProvider {
                     error: None,
                     timestamp: chrono::Utc::now(),
                 };
-                Ok(response.result.unwrap())
+                response.result.ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No response result".to_string())
+                })
             }
             _ => Err(SolanaRecoverError::AuthenticationError(
                 format!("Unsupported Solflare method: {}", method)

@@ -76,7 +76,9 @@ impl PhantomProvider {
                     error: None,
                     timestamp: chrono::Utc::now(),
                 };
-                Ok(response.result.unwrap())
+                response.result.ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No response result".to_string())
+                })
             }
             "signTransaction" => {
                 // Simulate transaction signing
@@ -104,7 +106,9 @@ impl PhantomProvider {
                     error: None,
                     timestamp: chrono::Utc::now(),
                 };
-                Ok(response.result.unwrap())
+                response.result.ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No response result".to_string())
+                })
             }
             "disconnect" => {
                 let response = PhantomResponse {
@@ -115,7 +119,9 @@ impl PhantomProvider {
                     error: None,
                     timestamp: chrono::Utc::now(),
                 };
-                Ok(response.result.unwrap())
+                response.result.ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No response result".to_string())
+                })
             }
             _ => Err(SolanaRecoverError::AuthenticationError(
                 format!("Unsupported Phantom method: {}", method)

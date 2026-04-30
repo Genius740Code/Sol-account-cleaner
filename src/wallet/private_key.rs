@@ -234,7 +234,9 @@ impl WalletProvider for PrivateKeyProvider {
                 "PrivateKey".to_string(),
                 Some(keypair.pubkey()),
                 &signed_tx,
-                *signed_tx.signatures.first().unwrap(),
+                *signed_tx.signatures.first().ok_or_else(|| {
+                    SolanaRecoverError::TransactionError("No signature found".to_string())
+                })?,
                 security_context,
                 risk_level,
             ).await?;

@@ -1,11 +1,18 @@
 use crate::core::{RpcEndpoint, Result, SolanaRecoverError};
-use crate::rpc::{ConnectionPoolTrait, RpcClientWrapper};
+use crate::rpc::{RpcClientWrapper, ConnectionPoolTrait};
+use crate::utils::enhanced_metrics::ConnectionPoolMetrics;
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait RpcClientTrait: Send + Sync {
+    async fn get_minimum_balance_for_rent_exemption(&self, account_size: usize) -> Result<u64>;
+}
+
 use solana_client::rpc_client::RpcClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use dashmap::DashMap;
 use std::time::{Duration, Instant};
-use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
@@ -21,7 +28,8 @@ pub struct EnhancedConnectionPool {
     load_balancer: Arc<LoadBalancer>,
     circuit_breakers: Arc<DashMap<String, Arc<CircuitBreaker>>>,
     metrics: Arc<RwLock<EnhancedPoolMetrics>>,
-    config: PoolConfig,
+    #[allow(dead_code)]
+    config: EnhancedPoolConfig,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,12 +45,14 @@ pub struct WeightedEndpoint {
 }
 
 #[derive(Debug, Clone)]
-pub struct PoolConfig {
+pub struct EnhancedPoolConfig {
+    pub endpoints: Vec<RpcEndpoint>,
     pub max_connections_per_endpoint: usize,
     pub health_check_interval: Duration,
     pub circuit_breaker_threshold: u32,
     pub circuit_breaker_timeout: Duration,
-    pub load_balance_strategy: LoadBalanceStrategy,
+    pub enable_load_balancing: bool,
+    pub request_timeout: Duration,
     pub enable_connection_multiplexing: bool,
     pub enable_compression: bool,
 }
@@ -77,14 +87,16 @@ pub struct EndpointMetrics {
     pub last_failure_ms: Option<u64>, // Unix timestamp in ms
 }
 
-impl Default for PoolConfig {
+impl Default for EnhancedPoolConfig {
     fn default() -> Self {
         Self {
+            endpoints: vec![],
             max_connections_per_endpoint: 50,
             health_check_interval: Duration::from_secs(30),
             circuit_breaker_threshold: 5,
             circuit_breaker_timeout: Duration::from_secs(60),
-            load_balance_strategy: LoadBalanceStrategy::WeightedRoundRobin,
+            enable_load_balancing: true,
+            request_timeout: Duration::from_secs(30),
             enable_connection_multiplexing: true,
             enable_compression: true,
         }
@@ -92,8 +104,10 @@ impl Default for PoolConfig {
 }
 
 impl EnhancedConnectionPool {
-    pub fn new(endpoints: Vec<RpcEndpoint>, config: PoolConfig) -> Self {
-        let weighted_endpoints: Vec<WeightedEndpoint> = endpoints
+    pub fn with_config(config: EnhancedPoolConfig) -> Self {
+        let config = config.clone();
+        let config_clone = config.clone();
+        let weighted_endpoints: Vec<WeightedEndpoint> = config_clone.endpoints
             .into_iter()
             .enumerate()
             .map(|(i, endpoint)| WeightedEndpoint {
@@ -108,18 +122,21 @@ impl EnhancedConnectionPool {
             })
             .collect();
 
+        let health_check_interval = config_clone.health_check_interval;
+        let config_for_struct = config.clone();
+        
         let pool = Self {
             endpoints: Arc::new(RwLock::new(weighted_endpoints)),
             connection_pools: Arc::new(DashMap::new()),
-            health_checker: Arc::new(HealthChecker::new(config.health_check_interval)),
-            load_balancer: Arc::new(LoadBalancer::new(config.load_balance_strategy.clone())),
+            health_checker: Arc::new(HealthChecker::new(health_check_interval)),
+            load_balancer: Arc::new(LoadBalancer::new(LoadBalanceStrategy::WeightedRoundRobin)),
             circuit_breakers: Arc::new(DashMap::new()),
             metrics: Arc::new(RwLock::new(EnhancedPoolMetrics::default())),
-            config,
+            config: config_for_struct,
         };
 
         // Initialize connection pools and circuit breakers for each endpoint
-        pool.initialize_components();
+        pool.initialize_components(config.clone());
 
         pool
     }
@@ -137,21 +154,21 @@ impl EnhancedConnectionPool {
         }
     }
 
-    fn initialize_components(&self) {
+    fn initialize_components(&self, config: EnhancedPoolConfig) {
         let endpoints = self.endpoints.blocking_read();
         for endpoint in endpoints.iter() {
             // Create connection pool for this endpoint
             let pool = Arc::new(BasicConnectionPool::new(
                 endpoint.endpoint.clone(),
-                self.config.max_connections_per_endpoint,
+                config.max_connections_per_endpoint,
             ));
             self.connection_pools.insert(endpoint.endpoint.url.clone(), pool);
 
             // Create circuit breaker for this endpoint
             let circuit_breaker = Arc::new(CircuitBreaker::new(
                 endpoint.endpoint.url.clone(),
-                self.config.circuit_breaker_threshold,
-                self.config.circuit_breaker_timeout,
+                config.circuit_breaker_threshold,
+                config.circuit_breaker_timeout,
             ));
             self.circuit_breakers.insert(endpoint.endpoint.url.clone(), circuit_breaker);
         }
@@ -279,14 +296,56 @@ impl ConnectionPoolTrait for EnhancedConnectionPool {
     async fn get_client(&self) -> Result<Arc<RpcClientWrapper>> {
         let endpoint_url = self.select_endpoint().await?;
         let client = self.get_client_for_endpoint(&endpoint_url).await?;
-        
-        // Wrap client to automatically update metrics
-        // For now, return the base client without metrics wrapping
-        // TODO: Implement proper metrics-aware client wrapper
         Ok(client)
     }
 }
 
+
+/// Metrics-aware RPC client wrapper
+pub struct MetricsAwareClient {
+    client: Arc<RpcClientWrapper>,
+    #[allow(dead_code)]
+    endpoint_url: String,
+    metrics: Arc<RwLock<ConnectionPoolMetrics>>,
+}
+
+impl MetricsAwareClient {
+    pub fn new(client: Arc<RpcClientWrapper>, endpoint_url: String, metrics: Arc<RwLock<ConnectionPoolMetrics>>) -> Self {
+        Self {
+            client,
+            endpoint_url,
+            metrics,
+        }
+    }
+}
+
+#[async_trait]
+impl RpcClientTrait for RpcClientWrapper {
+    async fn get_minimum_balance_for_rent_exemption(&self, account_size: usize) -> Result<u64> {
+        self.get_minimum_balance_for_rent_exemption(account_size).await
+    }
+}
+
+#[async_trait]
+impl RpcClientTrait for MetricsAwareClient {
+    async fn get_minimum_balance_for_rent_exemption(&self, account_size: usize) -> Result<u64> {
+        let _start_time = std::time::Instant::now();
+        let result = self.client.get_minimum_balance_for_rent_exemption(account_size).await;
+        
+        // Update metrics
+        {
+            let mut metrics = self.metrics.write().await;
+            // Use available fields in ConnectionPoolMetrics
+            if result.is_ok() {
+                metrics.active_connections += 1;
+            } else {
+                metrics.connection_errors += 1;
+            }
+        }
+        
+        result
+    }
+}
 
 /// Health checker for monitoring endpoint health
 pub struct HealthChecker {

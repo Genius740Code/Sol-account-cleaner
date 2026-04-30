@@ -1023,6 +1023,7 @@ fn print_nft_scan_result(result: &solana_recover::NftScanResult, detailed: bool)
     }
 }
 
+#[allow(dead_code)]
 fn print_total_claim_result_unified(result: &UnifiedTotalClaimResult, dev: bool) {
     println!();
     println!("Unified Total Claimable Assets Summary:");

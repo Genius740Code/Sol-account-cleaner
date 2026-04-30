@@ -8,6 +8,7 @@ use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::net::SocketAddr;
+use std::time::Instant;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -90,6 +91,7 @@ pub struct AxumApiState {
     pub config: Config,
     pub rate_limiter: Arc<RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware<QuantaInstant>>>,
     pub metrics_handle: PrometheusHandle,
+    pub server: AxumServer,
 }
 
 #[derive(Debug)]
@@ -97,6 +99,17 @@ pub struct AxumServer {
     #[allow(dead_code)]
     addr: SocketAddr,
     shutdown_tx: tokio::sync::oneshot::Sender<()>,
+    start_time: Instant,
+}
+
+impl Clone for AxumServer {
+    fn clone(&self) -> Self {
+        Self {
+            addr: self.addr,
+            shutdown_tx: tokio::sync::oneshot::channel().0,
+            start_time: self.start_time,
+        }
+    }
 }
 
 impl AxumServer {
@@ -167,8 +180,16 @@ pub async fn start_server(
     let quota = Quota::per_minute(NonZeroU32::new(100).unwrap());
     let _rate_limiter = Arc::new(RateLimiter::direct(quota));
 
-    // Update state with metrics handle
-    let state_with_metrics = state;
+    // Create server instance first
+    let server = AxumServer {
+        addr,
+        shutdown_tx: tokio::sync::oneshot::channel().0,
+        start_time: Instant::now(),
+    };
+    
+    // Update state with server and metrics handle
+    let mut state_with_metrics = state;
+    state_with_metrics.server = server.clone();
 
     // Build the application router
     let app = Router::new()
@@ -200,20 +221,22 @@ pub async fn start_server(
         )
         .with_state(state_with_metrics);
 
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let (_, shutdown_rx): (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Receiver<()>) = tokio::sync::oneshot::channel();
 
     // Spawn the server
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    let server = axum::serve(listener, app.into_make_service())
+    let listener = tokio::net::TcpListener::bind(addr).await
+        .map_err(|e| crate::SolanaRecoverError::InternalError(
+            format!("Failed to bind to address {}: {}", addr, e)
+        ))?;
+
+    let server_future = axum::serve(listener, app)
         .with_graceful_shutdown(async {
             shutdown_rx.await.ok();
-            info!("Graceful shutdown signal received");
         });
 
-    info!("Axum server listening on {}", addr);
-
+    // Spawn server task
     let _server_handle = tokio::spawn(async move {
-        if let Err(e) = server.await {
+        if let Err(e) = server_future.await {
             error!("Server error: {}", e);
         }
     });
@@ -221,10 +244,7 @@ pub async fn start_server(
     // Wait for a brief moment to ensure server started
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    Ok(AxumServer {
-        addr,
-        shutdown_tx,
-    })
+    Ok(server)
 }
 
 #[allow(dead_code)]
@@ -454,7 +474,7 @@ async fn get_system_status(
     let status = serde_json::json!({
         "service": "Solana Recover API",
         "version": env!("CARGO_PKG_VERSION"),
-        "uptime": "TODO", // Would track actual uptime
+        "uptime": format!("{}s", state.server.start_time.elapsed().as_secs()),
         "processor": {
             "metrics": processor_metrics,
             "active_batches": active_batches,
