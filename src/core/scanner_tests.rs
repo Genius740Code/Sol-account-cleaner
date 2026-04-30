@@ -181,7 +181,7 @@ mod tests {
         assert!(result.is_ok());
         let scan_result = result.unwrap();
         assert_eq!(scan_result.status, ScanStatus::Failed);
-        assert!(scan_result.error.is_some());
+        assert!(scan_result.error_message.is_some());
     }
 
     #[tokio::test]

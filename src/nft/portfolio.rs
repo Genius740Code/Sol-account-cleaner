@@ -647,11 +647,11 @@ impl PortfolioAnalyzer {
         let mut sorted_values = values.to_vec();
         sorted_values.sort_unstable();
 
-        let mut cumulative_sum = 0.0;
+        let mut _cumulative_sum = 0.0;
         let mut sum_of_differences = 0.0;
 
         for (i, &value) in sorted_values.iter().enumerate() {
-            cumulative_sum += value as f64;
+            _cumulative_sum += value as f64;
             sum_of_differences += (2.0 * (i as f64 + 1.0) - n as f64 - 1.0) * value as f64;
         }
 

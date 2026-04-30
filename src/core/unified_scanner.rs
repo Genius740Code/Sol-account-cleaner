@@ -73,6 +73,25 @@ impl Default for UnifiedScannerConfig {
     }
 }
 
+impl UnifiedScannerConfig {
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<()> {
+        if self.max_concurrent_scans == 0 {
+            return Err(SolanaRecoverError::ConfigError("max_concurrent_scans must be greater than 0".to_string()));
+        }
+        
+        if self.batch_size == 0 {
+            return Err(SolanaRecoverError::ConfigError("batch_size must be greater than 0".to_string()));
+        }
+        
+        if self.scan_timeout.as_secs() == 0 {
+            return Err(SolanaRecoverError::ConfigError("scan_timeout must be greater than 0 seconds".to_string()));
+        }
+        
+        Ok(())
+    }
+}
+
 /// Strategy trait for different scanning approaches
 #[async_trait]
 pub trait ScanStrategy: Send + Sync {

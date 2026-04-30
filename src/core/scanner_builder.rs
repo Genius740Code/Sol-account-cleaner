@@ -233,12 +233,16 @@ mod tests {
     // Mock implementations for testing
     struct MockConnectionPool;
     
+    #[async_trait::async_trait]
     impl ConnectionPoolTrait for MockConnectionPool {
-        // Implement required methods...
+        async fn get_client(&self) -> crate::core::Result<Arc<crate::rpc::RpcClientWrapper>> {
+            Err(crate::core::Error::MockError("Mock connection pool".to_string()))
+        }
     }
     
     struct MockCache;
     
+    #[async_trait::async_trait]
     impl CacheTrait for MockCache {
         async fn get(&self, _key: &str) -> Result<Option<Vec<u8>>> {
             Ok(None)

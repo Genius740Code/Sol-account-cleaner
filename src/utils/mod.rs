@@ -25,7 +25,7 @@ pub use logging::*;
 pub use monitoring::*;
 pub use memory_optimizer::*;
 pub use memory_pool::{MemoryPool, PooledItem, MemoryManager, BufferPool};
-pub use enhanced_memory_manager::{EnhancedMemoryManager, MemoryManagerConfig, EnhancedMemoryStats};
+pub use enhanced_memory_manager::{EnhancedMemoryManager, MemoryManagerConfig, EnhancedMemoryStats, PoolSizes, GcConfig, MonitoringConfig};
 pub use advanced_buffer_pools::{AdvancedBufferPool, BufferPoolConfig, BufferPoolStats};
 pub use gc_scheduler::{GcScheduler, GcSchedulerConfig, GcSchedulerStats};
 pub use memory_monitor::{MemoryMonitor, MemoryMonitorConfig, MemoryStatistics};

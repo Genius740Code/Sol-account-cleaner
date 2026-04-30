@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{CacheConfig, DatabaseConfig};
+    use crate::storage::{CacheConfig, DatabaseConfig, SqlitePersistenceManager};
     use crate::core::{ScanResult, WalletInfo, ScanStatus};
     use uuid::Uuid;
     use std::str::FromStr;
@@ -45,8 +45,12 @@ mod tests {
             wallet_address: "11111111111111111111111111111112".to_string(),
             status: ScanStatus::Completed,
             result: None,
-            error_message: None,
+            empty_accounts_found: 0,
+            recoverable_sol: 0.0,
+            scan_time_ms: 0,
             created_at: chrono::Utc::now(),
+            completed_at: Some(chrono::Utc::now()),
+            error_message: None,
         };
 
         // Test put
@@ -79,8 +83,12 @@ mod tests {
             wallet_address: "11111111111111111111111111111112".to_string(),
             status: ScanStatus::Completed,
             result: None,
-            error_message: None,
+            empty_accounts_found: 0,
+            recoverable_sol: 0.0,
+            scan_time_ms: 0,
             created_at: chrono::Utc::now(),
+            completed_at: Some(chrono::Utc::now()),
+            error_message: None,
         };
 
         // Test put
@@ -126,8 +134,12 @@ mod tests {
             wallet_address: "11111111111111111111111111111112".to_string(),
             status: ScanStatus::Completed,
             result: None,
-            error_message: None,
+            empty_accounts_found: 0,
+            recoverable_sol: 0.0,
+            scan_time_ms: 0,
             created_at: chrono::Utc::now(),
+            completed_at: Some(chrono::Utc::now()),
+            error_message: None,
         };
 
         // Test save

@@ -137,6 +137,7 @@ impl IntoResponse for SolanaRecoverError {
             SolanaRecoverError::SecurityError(msg) => (StatusCode::FORBIDDEN, msg),
             SolanaRecoverError::CircuitBreakerOpen(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             SolanaRecoverError::NftError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("NFT error: {}", msg)),
+            SolanaRecoverError::MockError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Mock error: {}", msg)),
         };
 
         let body = Json(serde_json::json!({

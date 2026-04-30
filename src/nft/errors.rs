@@ -17,7 +17,7 @@ pub enum NftError {
 
     /// Network/RPC related errors
     #[error("Network error: {message}")]
-    Network { message: String, source: String },
+    Network { message: String, source: Option<String> },
 
     /// Metadata fetching errors
     #[error("Metadata error: {message}")]

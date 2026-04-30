@@ -82,6 +82,9 @@ pub enum SolanaRecoverError {
     
     #[error("NFT error: {0}")]
     NftError(String),
+    
+    #[error("Mock error: {0}")]
+    MockError(String),
 }
 
 impl Clone for SolanaRecoverError {
@@ -114,6 +117,7 @@ impl Clone for SolanaRecoverError {
             SolanaRecoverError::SecurityError(msg) => SolanaRecoverError::SecurityError(msg.clone()),
             SolanaRecoverError::CircuitBreakerOpen(msg) => SolanaRecoverError::CircuitBreakerOpen(msg.clone()),
             SolanaRecoverError::NftError(msg) => SolanaRecoverError::NftError(msg.clone()),
+            SolanaRecoverError::MockError(msg) => SolanaRecoverError::MockError(msg.clone()),
         }
     }
 }

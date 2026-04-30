@@ -1,10 +1,10 @@
 //! Tests for the unified scanner architecture
 
 use crate::core::unified_scanner::*;
-use crate::core::scanner_builder::*;
+use crate::core::scanner_builder::ScannerBuilder;
 use crate::core::error_recovery::*;
 use crate::core::config_management::*;
-use crate::utils::cache::{MemoryCache, SimpleMetrics};
+use crate::utils::cache::{MemoryCache, SimpleMetrics, CacheTrait, MetricsTrait};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -15,6 +15,7 @@ mod tests {
     // Mock connection pool for testing
     struct MockConnectionPool;
     
+    #[async_trait::async_trait]
     impl crate::rpc::ConnectionPoolTrait for MockConnectionPool {
         async fn get_client(&self) -> crate::core::Result<Arc<crate::rpc::RpcClientWrapper>> {
             Err(crate::core::SolanaRecoverError::InternalError("Mock connection pool".to_string()))
@@ -246,7 +247,7 @@ mod tests {
         let retry = RetryMechanism::with_default_policy();
         let mut call_count = 0;
         
-        let result = retry.execute(|| async {
+        let result: Result<String, SolanaRecoverError> = retry.execute(|| async {
             call_count += 1;
             Err(crate::core::SolanaRecoverError::TimeoutError("always fails".to_string()))
         }).await;

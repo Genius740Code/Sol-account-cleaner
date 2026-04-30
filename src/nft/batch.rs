@@ -4,17 +4,18 @@
 //! work-stealing, adaptive resource management, and comprehensive monitoring.
 
 use crate::nft::cache::{CacheManager, CacheKey};
-use crate::nft::errors::{NftError, NftResult, RecoveryStrategy};
+use crate::nft::errors::{NftError, NftResult, RecoveryStrategy, RiskLevel};
 use crate::nft::metadata::MetadataFetcher;
 use crate::nft::portfolio::PortfolioAnalyzer;
 use crate::nft::types::*;
 use crate::nft::valuation::ValuationEngine;
+use futures::StreamExt;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Semaphore};
-use tracing::{debug, error, info, warn};
+use std::time::Instant;
+use tokio::sync::Semaphore;
+use tracing::{error, info};
 
 /// High-performance NFT batch processor
 #[derive(Clone)]
@@ -491,20 +492,20 @@ impl BatchProcessor {
         // Calculate final statistics
         let total_time_ms = start_time.elapsed().as_millis() as u64;
         result.total_processing_time_ms = total_time_ms;
-        result.successful_items = result.successful_results.len();
-        result.failed_items = result.failed_results.len();
-        result.success_rate = if result.total_items > 0 {
-            result.successful_items as f64 / result.total_items as f64
+        result.statistics.successful_items = result.successful_results.len();
+        result.statistics.failed_items = result.failed_results.len();
+        result.success_rate = if result.statistics.total_items > 0 {
+            result.statistics.successful_items as f64 / result.statistics.total_items as f64
         } else {
             0.0
         };
-        result.avg_processing_time_ms = if result.total_items > 0 {
-            total_time_ms as f64 / result.total_items as f64
+        result.avg_processing_time_ms = if result.statistics.total_items > 0 {
+            total_time_ms as f64 / result.statistics.total_items as f64
         } else {
             0.0
         };
         result.throughput = if total_time_ms > 0 {
-            (result.successful_items as f64 / total_time_ms as f64) * 1000.0
+            (result.statistics.successful_items as f64 / total_time_ms as f64) * 1000.0
         } else {
             0.0
         };
@@ -523,23 +524,23 @@ impl BatchProcessor {
         }
 
         self.metrics.total_items_processed.fetch_add(
-            result.total_items as u64,
+            result.statistics.total_items as u64,
             std::sync::atomic::Ordering::Relaxed
         );
         self.metrics.avg_batch_time_ms.fetch_add(total_time_ms, std::sync::atomic::Ordering::Relaxed);
         self.metrics.avg_throughput.fetch_add(result.throughput, std::sync::atomic::Ordering::Relaxed);
 
         result.completed_at = Some(chrono::Utc::now());
-        result.status = if result.failed_items == 0 {
+        result.status = if result.statistics.failed_items == 0 {
             JobStatus::Completed
-        } else if result.successful_items == 0 {
+        } else if result.statistics.successful_items == 0 {
             JobStatus::Failed
         } else {
             JobStatus::Completed // Partial success is considered completed
         };
 
         info!("Completed batch job {} in {}ms: {} successful, {} failed", 
-            result.job_id, total_time_ms, result.successful_items, result.failed_items);
+            result.job_id, total_time_ms, result.statistics.successful_items, result.statistics.failed_items);
 
         Ok(result)
     }
@@ -635,7 +636,7 @@ impl BatchProcessor {
                 Err(e) => {
                     error!("Metadata fetch batch {} failed: {}", chunk_index, e);
                     // Add errors for all items in this chunk
-                    for (index, item) in chunk.iter().enumerate() {
+                    for (index, _item) in chunk.iter().enumerate() {
                         let item_index = chunk_index * batch_size + index;
                         if item_index < job.items.len() {
                             result.failed_results.push(BatchItemError {
@@ -939,11 +940,8 @@ impl ResourceMonitor {
 
     /// Get usage statistics
     pub async fn get_usage_stats(&self) -> ResourceUsageStats {
-        let memory_history = self.memory_history.lock().unwrap_or_else(|_| std::sync::Mutex::new(Vec::new()));
-        let cpu_history = self.cpu_history.lock().unwrap_or_else(|_| std::sync::Mutex::new(Vec::new()));
-
-        let mem_hist = memory_history.lock().unwrap();
-        let cpu_hist = cpu_history.lock().unwrap();
+        let mem_hist = self.memory_history.lock().unwrap();
+        let cpu_hist = self.cpu_history.lock().unwrap();
 
         let peak_memory = mem_hist.iter().fold(0.0, f64::max);
         let avg_memory = if !mem_hist.is_empty() {

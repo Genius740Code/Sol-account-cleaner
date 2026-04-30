@@ -4,7 +4,7 @@
 //! with existing Solana recovery infrastructure, and production-ready performance.
 
 use crate::nft::batch::{BatchProcessor, BatchJob, BatchJobConfig, BatchJobType, BatchItem, BatchItemData};
-use crate::nft::cache::CacheManager;
+use crate::nft::cache::{CacheManager, CacheKey};
 use crate::nft::errors::{NftError, NftResult};
 use crate::nft::metadata::MetadataFetcher;
 use crate::nft::portfolio::PortfolioAnalyzer;
@@ -13,6 +13,7 @@ use crate::nft::types::*;
 use crate::nft::valuation::ValuationEngine;
 use crate::rpc::ConnectionPool;
 use crate::core::types::RpcEndpoint;
+use futures::{stream, StreamExt};
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, info, warn};

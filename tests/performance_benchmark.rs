@@ -299,29 +299,6 @@ impl PerformanceBenchmark {
                 enable_compression: true,
                 enable_multiplexing: true,
             },
-            cache_config: CacheConfig {
-                l1_max_capacity: match performance_mode {
-                    PerformanceMode::Throughput => 200 * 1024 * 1024, // 200MB
-                    PerformanceMode::Latency => 100 * 1024 * 1024,  // 100MB
-                    PerformanceMode::Balanced => 150 * 1024 * 1024, // 150MB
-                    PerformanceMode::ResourceEfficient => 50 * 1024 * 1024, // 50MB
-                },
-                l1_ttl: Duration::from_secs(300),
-                l1_tti: Duration::from_secs(120),
-                l2_max_capacity: 500 * 1024 * 1024, // 500MB
-                l2_ttl: Duration::from_secs(3600),
-                l3_max_size_bytes: 2 * 1024 * 1024 * 1024, // 2GB
-                l3_ttl: Duration::from_secs(86400),
-                l3_compression_threshold: 1024,
-                enable_compression: true,
-                enable_metrics: true,
-                cleanup_interval: Duration::from_secs(300),
-                warming_enabled: true,
-            },
-            processor_config: ProcessorConfig {
-                max_workers: num_cpus::get(),
-                max_concurrent_tasks: match performance_mode {
-                    PerformanceMode::Throughput => 200,
                     PerformanceMode::Latency => 50,
                     PerformanceMode::Balanced => 100,
                     PerformanceMode::ResourceEfficient => 25,
@@ -335,10 +312,31 @@ impl PerformanceBenchmark {
                 worker_idle_timeout: Duration::from_secs(30),
             },
             memory_config: MemoryManagerConfig {
-                enable_monitoring: true,
-                gc_threshold: 0.8,
-                monitoring_interval: Duration::from_secs(30),
-                auto_gc_enabled: true,
+                max_pool_sizes: solana_recover::utils::PoolSizes {
+                    wallet_info_pool: 1000,
+                    empty_account_pool: 2000,
+                    scan_result_pool: 500,
+                    batch_scan_result_pool: 100,
+                    recovery_transaction_pool: 200,
+                    string_pool: 5000,
+                    vec_string_pool: 1000,
+                    vec_u8_pool: 2000,
+                },
+                gc_config: solana_recover::utils::GcConfig {
+                    interval_seconds: 30,
+                    memory_threshold_percent: 0.8,
+                    force_gc_interval_seconds: 300,
+                    enable_adaptive_gc: true,
+                },
+                monitoring_config: solana_recover::utils::MonitoringConfig {
+                    collection_interval_seconds: 30,
+                    enable_leak_detection: true,
+                    leak_detection_threshold_seconds: 300,
+                    enable_memory_profiling: true,
+                },
+                enable_object_pooling: true,
+                enable_memory_monitoring: true,
+                enable_auto_optimization: true,
             },
             enable_all_optimizations: true,
             performance_mode,

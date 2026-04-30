@@ -47,12 +47,13 @@ use std::sync::Arc;
 pub mod core;
 pub mod rpc;
 pub mod storage;
+
 pub mod wallet;
 pub mod utils;
 pub mod config;
 pub mod api;
 
-// Export NFT module
+// NFT module (when feature is enabled)
 #[cfg(feature = "nft")]
 pub mod nft;
 
@@ -61,7 +62,9 @@ pub use core::*;
 
 // Re-export NFT types when feature is enabled
 #[cfg(feature = "nft")]
-pub use nft::*;
+pub use nft::scanner::NftScanResult;
+#[cfg(feature = "nft")]
+pub use nft::types::NftInfo;
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
