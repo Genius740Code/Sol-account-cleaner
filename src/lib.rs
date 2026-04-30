@@ -60,11 +60,38 @@ pub mod nft;
 // Re-export commonly used types
 pub use core::*;
 
-// Re-export NFT types when feature is enabled
+/// Re-export NFT types when feature is enabled
 #[cfg(feature = "nft")]
 pub use nft::scanner::NftScanResult;
 #[cfg(feature = "nft")]
 pub use nft::types::NftInfo;
+
+/// Unified scan result containing both SOL and NFT information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedScanResult {
+    /// SOL wallet information
+    pub sol_info: Option<WalletInfo>,
+    /// NFT scan information
+    #[cfg(feature = "nft")]
+    pub nft_info: Option<NftScanResult>,
+    /// Scan mode used
+    pub scan_mode: ScanMode,
+    /// Total scan duration in milliseconds
+    pub total_scan_time_ms: u64,
+    /// Wallet address scanned
+    pub wallet_address: String,
+}
+
+/// Scan modes for different types of scanning
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ScanMode {
+    /// Scan SOL accounts only
+    SolOnly,
+    /// Scan NFT accounts only
+    NftOnly,
+    /// Scan both SOL and NFT accounts
+    Both,
+}
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -88,7 +115,207 @@ pub struct EmptyAccount {
     pub lamports: u64,
 }
 
-/// Ultra-fast wallet scanning with all optimizations enabled
+/// Ultra-fast unified wallet scanning with SOL and NFT support
+/// 
+/// This function provides the fastest possible wallet scanning using:
+/// - Predictive prefetching
+/// - Connection multiplexing
+/// - Smart batching
+/// - Fast path scanning for common patterns
+/// - Maximum parallelization
+/// - Unified SOL and NFT scanning
+/// 
+/// # Arguments
+/// 
+/// * `wallet_address` - The Solana wallet address to scan
+/// * `rpc_endpoint` - Optional RPC endpoint (defaults to mainnet)
+/// * `scan_mode` - Scan mode: sol, nft, or both
+/// 
+/// # Returns
+/// 
+/// Returns a `UnifiedScanResult` containing both SOL and NFT scan results.
+/// 
+/// # Example
+/// 
+/// ```rust,no_run
+/// use solana_recover::{scan_wallet_unified, ScanMode};
+/// 
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let result = scan_wallet_unified("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None, ScanMode::Both).await?;
+///     if let Some(sol_info) = &result.sol_info {
+///         println!("Found {} recoverable SOL", sol_info.recoverable_sol);
+///     }
+///     if let Some(nft_info) = &result.nft_info {
+///         println!("Found {} NFTs", nft_info.nfts.len());
+///     }
+///     Ok(())
+/// }
+/// ```
+#[cfg(feature = "nft")]
+pub async fn scan_wallet_unified(
+    wallet_address: &str,
+    rpc_endpoint: Option<&str>,
+    scan_mode: ScanMode,
+) -> core::Result<UnifiedScanResult> {
+    use core::ScannerFactory;
+    use core::unified_scanner::UnifiedScannerConfig;
+    use core::unified_scanner::PerformanceMode;
+    use core::types::RpcEndpoint;
+    use rpc::ConnectionPool;
+    use nft::scanner::{NftScanner, NftScannerConfig};
+    use std::sync::Arc;
+    
+    let start_time = std::time::Instant::now();
+    let endpoint = rpc_endpoint.unwrap_or(DEFAULT_MAINNET_ENDPOINT);
+    let rpc_endpoint = RpcEndpoint {
+        url: endpoint.to_string(),
+        priority: 0,
+        rate_limit_rps: 200, // Higher rate limit for ultra-fast
+        timeout_ms: 5000,     // Shorter timeout for ultra-fast
+        healthy: true,
+    };
+    
+    let connection_pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 16));
+    
+    // Initialize results
+    let mut sol_info = None;
+    let mut nft_info = None;
+    
+    // Scan SOL accounts if requested
+    if matches!(scan_mode, ScanMode::SolOnly | ScanMode::Both) {
+        let config = UnifiedScannerConfig {
+            performance_mode: PerformanceMode::UltraFast,
+            max_concurrent_scans: 500,
+            scan_timeout: std::time::Duration::from_secs(2),
+            batch_size: 100,
+            enable_optimizations: true,
+            enable_caching: true,
+            enable_parallel_processing: true,
+        };
+        
+        let scanner = ScannerFactory::create_with_config(connection_pool.clone(), config)?;
+        let scan_result = scanner.scan_wallet(wallet_address).await?;
+        sol_info = scan_result.result;
+    }
+    
+    // Scan NFT accounts if requested
+    if matches!(scan_mode, ScanMode::NftOnly | ScanMode::Both) {
+        let nft_config = NftScannerConfig {
+            performance_mode: nft::types::PerformanceMode::UltraFast,
+            max_concurrent_scans: 50,
+            scan_timeout_seconds: 60,
+            enable_batch_processing: true,
+            ..Default::default()
+        };
+        
+        let nft_scanner = NftScanner::new(connection_pool.clone(), nft_config)?;
+        nft_info = Some(nft_scanner.scan_wallet_nfts(wallet_address).await?);
+    }
+    
+    let total_scan_time_ms = start_time.elapsed().as_millis() as u64;
+    
+    #[cfg(feature = "nft")]
+    {
+        Ok(UnifiedScanResult {
+            sol_info,
+            nft_info,
+            scan_mode,
+            total_scan_time_ms,
+            wallet_address: wallet_address.to_string(),
+        })
+    }
+    #[cfg(not(feature = "nft"))]
+    {
+        Ok(UnifiedScanResult {
+            sol_info,
+            scan_mode,
+            total_scan_time_ms,
+            wallet_address: wallet_address.to_string(),
+        })
+    }
+}
+
+/// Calculate total claimable assets for multiple wallets with unified scanning
+#[cfg(feature = "nft")]
+pub async fn calculate_total_claimable_unified(
+    targets: &str,
+    rpc_endpoint: Option<&str>,
+    dev: bool,
+    scan_mode: ScanMode,
+) -> core::Result<UnifiedTotalClaimResult> {
+    let (wallets, _is_private_key) = parse_targets_wrapper(targets)?;
+    
+    let mut total_recoverable_sol = 0.0;
+    let mut total_nfts = 0usize;
+    let mut total_nft_value = 0u64;
+    let mut wallet_results = Vec::new();
+    
+    for wallet_address in wallets {
+        let scan_result = scan_wallet_unified(&wallet_address, rpc_endpoint, scan_mode.clone()).await?;
+        
+        if let Some(sol_info) = &scan_result.sol_info {
+            total_recoverable_sol += sol_info.recoverable_sol;
+        }
+        
+        if let Some(nft_info) = &scan_result.nft_info {
+            total_nfts += nft_info.nfts.len();
+            total_nft_value += nft_info.total_estimated_value_lamports;
+        }
+        
+        if dev {
+            wallet_results.push((wallet_address, scan_result));
+        }
+    }
+    
+    Ok(UnifiedTotalClaimResult {
+        total_wallets: wallet_results.len(),
+        total_recoverable_sol,
+        total_nfts,
+        total_nft_value_lamports: total_nft_value,
+        wallet_results,
+        scan_mode,
+    })
+}
+
+/// Parse targets string into wallet addresses
+/// Wrapper function to parse targets in the same format as the CLI
+pub fn parse_targets_wrapper(targets: &str) -> core::Result<(Vec<String>, bool)> {
+    if targets.starts_with("wallet:") {
+        let addresses = targets.strip_prefix("wallet:")
+            .unwrap()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        Ok((addresses, false))
+    } else if targets.starts_with("key:") {
+        // For private keys, we would need to derive addresses
+        // This is a placeholder - in a real implementation, you'd parse the private keys
+        // and derive the corresponding wallet addresses
+        Err(core::SolanaRecoverError::InternalError("Private key parsing not implemented in unified scanner".to_string()))
+    } else {
+        // Assume it's a single wallet address
+        Ok((vec![targets.trim().to_string()], false))
+    }
+}
+
+/// Unified total claim result containing both SOL and NFT information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedTotalClaimResult {
+    /// Total wallets scanned
+    pub total_wallets: usize,
+    /// Total recoverable SOL
+    pub total_recoverable_sol: f64,
+    /// Total NFTs found
+    pub total_nfts: usize,
+    /// Total NFT value in lamports
+    pub total_nft_value_lamports: u64,
+    /// Individual wallet results (only included if dev mode is enabled)
+    pub wallet_results: Vec<(String, UnifiedScanResult)>,
+    /// Scan mode used
+    pub scan_mode: ScanMode,
+}
 /// 
 /// This function provides the fastest possible wallet scanning using:
 /// - Predictive prefetching

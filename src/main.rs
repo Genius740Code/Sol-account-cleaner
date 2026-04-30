@@ -1,7 +1,9 @@
 //! Simple CLI for the solana-recover crate
 
 use clap::{Parser, Subcommand};
-use solana_recover::{scan_wallet_ultra_fast, scan_wallet, recover_sol, WalletInfo, RecoveryRequest};
+use solana_recover::{scan_wallet_ultra_fast, scan_wallet, recover_sol, WalletInfo, RecoveryRequest, ScanMode, UnifiedScanResult, UnifiedTotalClaimResult};
+#[cfg(feature = "nft")]
+use solana_recover::{scan_wallet_unified, calculate_total_claimable_unified};
 use solana_recover::wallet::{WalletManager, WalletCredentials, WalletType, WalletCredentialData};
 use solana_sdk::signature::{Signer, SeedDerivable};
 use std::io::{self, Write};
@@ -49,6 +51,9 @@ enum Commands {
         /// Show detailed developer information (including account addresses)
         #[arg(short, long, default_value_t = false)]
         dev: bool,
+        /// Scan mode: sol (SOL accounts only), nft (NFT accounts only), or both (default)
+        #[arg(long, default_value = "both")]
+        mode: String,
     },
     /// Show total claimable SOL for wallets
     Show {
@@ -62,6 +67,9 @@ enum Commands {
         /// Show detailed developer information (including account addresses)
         #[arg(short, long, default_value_t = false)]
         dev: bool,
+        /// Scan mode: sol (SOL accounts only), nft (NFT accounts only), or both (default)
+        #[arg(long, default_value = "both")]
+        mode: String,
     },
     /// Reclaim SOL from empty accounts
     Reclaim {
@@ -81,6 +89,9 @@ enum Commands {
         /// Show detailed developer information (including account addresses)
         #[arg(short, long, default_value_t = false)]
         dev: bool,
+        /// Scan mode: sol (SOL accounts only), nft (NFT accounts only), or both (default)
+        #[arg(long, default_value = "both")]
+        mode: String,
     },
     /// Scan multiple wallets from a file
     Batch {
@@ -89,6 +100,37 @@ enum Commands {
         /// Show detailed developer information (including account addresses)
         #[arg(short, long, default_value_t = false)]
         dev: bool,
+        /// Scan mode: sol (SOL accounts only), nft (NFT accounts only), or both (default)
+        #[arg(long, default_value = "both")]
+        mode: String,
+    },
+    /// Scan NFTs in a wallet (NFT-only mode with detailed analysis)
+    Nft {
+        /// The wallet address to scan for NFTs
+        address: String,
+        /// RPC endpoint to use (defaults to mainnet)
+        #[arg(long)]
+        rpc_endpoint: Option<String>,
+        /// Show detailed NFT information including metadata and valuation
+        #[arg(short, long, default_value_t = false)]
+        detailed: bool,
+        /// Include security analysis (may take longer)
+        #[arg(long, default_value_t = false)]
+        security: bool,
+    },
+    /// Batch scan NFTs from multiple wallets
+    NftBatch {
+        /// File containing wallet addresses (one per line)
+        file: String,
+        /// RPC endpoint to use (defaults to mainnet)
+        #[arg(long)]
+        rpc_endpoint: Option<String>,
+        /// Show detailed NFT information
+        #[arg(short, long, default_value_t = false)]
+        detailed: bool,
+        /// Include security analysis
+        #[arg(long, default_value_t = false)]
+        security: bool,
     },
 }
 
@@ -193,7 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle subcommands
     match cli.command {
-        Some(Commands::Scan { address, rpc_endpoint, dev }) => {
+        Some(Commands::Scan { address, rpc_endpoint, dev, mode }) => {
             println!("Scanning wallet: {}", address);
             if let Some(endpoint) = &rpc_endpoint {
                 println!("Using RPC endpoint: {}", endpoint);
@@ -202,30 +244,107 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!();
 
+            let scan_mode = match mode.as_str() {
+                "sol" => ScanMode::SolOnly,
+                "nft" => ScanMode::NftOnly,
+                "both" => ScanMode::Both,
+                _ => {
+                    eprintln!("Invalid scan mode: {}. Use 'sol', 'nft', or 'both'", mode);
+                    return Err("Invalid scan mode".into());
+                }
+            };
+            
             let start_time = std::time::Instant::now();
-            let result = scan_wallet_ultra_fast(&address, rpc_endpoint.as_deref()).await?;
+            let result = {
+                #[cfg(feature = "nft")]
+                {
+                    scan_wallet_unified(&address, rpc_endpoint.as_deref(), scan_mode).await?
+                }
+                #[cfg(not(feature = "nft"))]
+                {
+                // Fallback to SOL-only scanning if NFT feature is not enabled
+                if matches!(scan_mode, ScanMode::NftOnly) {
+                    eprintln!("NFT scanning requires the 'nft' feature to be enabled");
+                    return Err("NFT feature not enabled".into());
+                }
+                let sol_result = scan_wallet_ultra_fast(&address, rpc_endpoint.as_deref()).await?;
+                #[cfg(feature = "nft")]
+                {
+                    UnifiedScanResult {
+                        sol_info: Some(sol_result),
+                        nft_info: None,
+                        scan_mode,
+                        total_scan_time_ms: start_time.elapsed().as_millis() as u64,
+                        wallet_address: address.clone(),
+                    }
+                }
+                #[cfg(not(feature = "nft"))]
+                {
+                    UnifiedScanResult {
+                        sol_info: Some(sol_result),
+                        scan_mode,
+                        total_scan_time_ms: start_time.elapsed().as_millis() as u64,
+                        wallet_address: address.clone(),
+                    }
+                }
+                }
+            };
             let elapsed = start_time.elapsed();
 
-            print!("✓ Ultra-fast scan completed in {}ms\n", elapsed.as_millis());
-            print_scan_result(&result, dev);
+            print!("✓ Unified scan completed in {}ms\n", elapsed.as_millis());
+            print_unified_scan_result(&result, dev);
         }
-        Some(Commands::Show { targets, rpc_endpoint, dev }) => {
-            println!("Calculating total claimable SOL...");
+        Some(Commands::Show { targets, rpc_endpoint, dev, mode }) => {
+            let scan_mode = match mode.as_str() {
+                "sol" => ScanMode::SolOnly,
+                "nft" => ScanMode::NftOnly,
+                "both" => ScanMode::Both,
+                _ => {
+                    eprintln!("Invalid scan mode: {}. Use 'sol', 'nft', or 'both'", mode);
+                    return Err("Invalid scan mode".into());
+                }
+            };
+            
+            println!("Calculating total claimable assets...");
             if let Some(endpoint) = &rpc_endpoint {
                 println!("Using RPC endpoint: {}", endpoint);
             } else {
                 println!("Using default mainnet endpoint");
             }
+            println!("Scan mode: {:?}", scan_mode);
             println!();
 
             let start_time = std::time::Instant::now();
-            let total = calculate_total_claimable(&targets, rpc_endpoint.as_deref(), dev).await?;
+            let total = {
+                #[cfg(feature = "nft")]
+                {
+                    calculate_total_claimable_unified(&targets, rpc_endpoint.as_deref(), dev, scan_mode).await?
+                }
+                #[cfg(not(feature = "nft"))]
+                {
+                // Fallback to SOL-only calculation if NFT feature is not enabled
+                if matches!(scan_mode, ScanMode::NftOnly) {
+                    eprintln!("NFT scanning requires the 'nft' feature to be enabled");
+                    return Err("NFT feature not enabled".into());
+                }
+                calculate_total_claimable(&targets, rpc_endpoint.as_deref(), dev).await?
+                }
+            };
             let elapsed = start_time.elapsed();
 
             print!("✓ Calculation completed in {}ms\n", elapsed.as_millis());
-            print_total_claim_result(&total, dev);
+            {
+                #[cfg(feature = "nft")]
+                {
+                    print_total_claim_result_unified(&total, dev);
+                }
+                #[cfg(not(feature = "nft"))]
+                {
+                    print_total_claim_result(&total, dev);
+                }
+            }
         }
-        Some(Commands::Reclaim { targets, destination, rpc_endpoint, force, dev }) => {
+        Some(Commands::Reclaim { targets, destination, rpc_endpoint, force, dev, mode: _ }) => {
             println!("Reclaiming SOL from empty accounts...");
             if let Some(endpoint) = &rpc_endpoint {
                 println!("Using RPC endpoint: {}", endpoint);
@@ -254,7 +373,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             print!("✅ Reclamation completed in {}ms\n", elapsed.as_millis());
             print_reclaim_result(&result, dev);
         }
-        Some(Commands::Batch { file, dev }) => {
+        Some(Commands::Batch { file, dev, mode: _ }) => {
             println!("Loading wallets from: {}", file);
             
             let content = std::fs::read_to_string(&file)?;
@@ -298,6 +417,98 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  Successful scans: {}", successful_scans);
             println!("  Failed scans: {}", wallets.len() - successful_scans);
             println!("  Total recoverable SOL: {:.9}", total_recoverable);
+        }
+        #[cfg(feature = "nft")]
+        Some(Commands::Nft { address, rpc_endpoint, detailed, security }) => {
+            println!("Scanning NFTs for wallet: {}", address);
+            if let Some(endpoint) = &rpc_endpoint {
+                println!("Using RPC endpoint: {}", endpoint);
+            } else {
+                println!("Using default mainnet endpoint");
+            }
+            println!("Detailed analysis: {}", if detailed { "enabled" } else { "disabled" });
+            println!("Security analysis: {}", if security { "enabled" } else { "disabled" });
+            println!();
+
+            let start_time = std::time::Instant::now();
+            let result = scan_wallet_unified(&address, rpc_endpoint.as_deref(), ScanMode::NftOnly).await?;
+            let elapsed = start_time.elapsed();
+
+            print!("✓ NFT scan completed in {}ms\n", elapsed.as_millis());
+            if let Some(nft_info) = result.nft_info {
+                print_nft_scan_result(&nft_info, detailed);
+            } else {
+                println!("No NFT results available. NFT scanning may not be properly configured.");
+            }
+        }
+        #[cfg(feature = "nft")]
+        Some(Commands::NftBatch { file, rpc_endpoint, detailed, security }) => {
+            println!("Batch scanning NFTs from file: {}", file);
+            if let Some(endpoint) = &rpc_endpoint {
+                println!("Using RPC endpoint: {}", endpoint);
+            } else {
+                println!("Using default mainnet endpoint");
+            }
+            println!("Detailed analysis: {}", if detailed { "enabled" } else { "disabled" });
+            println!("Security analysis: {}", if security { "enabled" } else { "disabled" });
+            println!();
+
+            // Read wallet addresses from file
+            let content = std::fs::read_to_string(&file)?;
+            let wallets: Vec<String> = content.lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.trim().to_string())
+                .collect();
+
+            println!("Found {} wallet addresses to scan for NFTs", wallets.len());
+            println!();
+
+            let mut total_nfts = 0usize;
+            let mut total_value = 0u64;
+            let mut successful_scans = 0;
+
+            for (i, wallet) in wallets.iter().enumerate() {
+                let wallet_display = if true { wallet.clone() } else { "[wallet address hidden]".to_string() };
+                print!("Scanning NFTs for wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
+                io::stdout().flush()?;
+
+                match scan_wallet_unified(wallet, rpc_endpoint.as_deref(), ScanMode::NftOnly).await {
+                    Ok(result) => {
+                        if let Some(nft_info) = result.nft_info {
+                            successful_scans += 1;
+                            total_nfts += nft_info.nfts.len();
+                            total_value += nft_info.total_estimated_value_lamports;
+                            println!("✓ {} NFTs ({:.9} SOL)", nft_info.nfts.len(), 
+                                nft_info.total_estimated_value_lamports as f64 / 1_000_000_000.0);
+                        } else {
+                            println!("✗ No NFT data");
+                        }
+                    }
+                    Err(e) => {
+                        println!("✗ {}", e);
+                    }
+                }
+            }
+
+            println!();
+            println!("Batch NFT Scan Summary:");
+            println!("  Total wallets: {}", wallets.len());
+            println!("  Successful scans: {}", successful_scans);
+            println!("  Failed scans: {}", wallets.len() - successful_scans);
+            println!("  Total NFTs found: {}", total_nfts);
+            println!("  Total estimated value: {:.9} SOL", total_value as f64 / 1_000_000_000.0);
+        }
+        #[cfg(not(feature = "nft"))]
+        Some(Commands::Nft { address: _, .. }) => {
+            eprintln!("NFT scanning requires the 'nft' feature to be enabled");
+            eprintln!("Please rebuild with: cargo build --features nft");
+            return Err("NFT feature not enabled".into());
+        }
+        #[cfg(not(feature = "nft"))]
+        Some(Commands::NftBatch { file: _, .. }) => {
+            eprintln!("NFT batch scanning requires the 'nft' feature to be enabled");
+            eprintln!("Please rebuild with: cargo build --features nft");
+            return Err("NFT feature not enabled".into());
         }
         None => {
             // No subcommand and no wallet - exit silently
@@ -643,5 +854,223 @@ fn print_scan_result(result: &WalletInfo, dev: bool) {
     } else {
         println!();
         println!("No SOL available for recovery from this wallet.");
+    }
+}
+
+fn print_unified_scan_result(result: &UnifiedScanResult, dev: bool) {
+    println!();
+    println!("Unified Scan Results:");
+    println!("  Scan Mode: {:?}", result.scan_mode);
+    println!("  Wallet Address: {}", result.wallet_address);
+    println!("  Total Scan Time: {}ms", result.total_scan_time_ms);
+    println!();
+    
+    // Print SOL results if available
+    if let Some(sol_info) = &result.sol_info {
+        println!("SOL Account Results:");
+        println!("  Total Accounts: {}", sol_info.total_accounts);
+        println!("  Empty Accounts: {}", sol_info.empty_accounts);
+        println!("  Recoverable SOL: {:.9} SOL", sol_info.recoverable_sol);
+        println!("  SOL Scan Time: {}ms", sol_info.scan_time_ms);
+        
+        if sol_info.empty_accounts > 0 && dev {
+            println!("  Empty Account Details:");
+            for (i, account) in sol_info.empty_account_addresses.iter().enumerate() {
+                println!("    {}. {}", i + 1, account);
+            }
+        }
+        println!();
+    }
+    
+    // Print NFT results if available
+    #[cfg(feature = "nft")]
+    if let Some(nft_info) = &result.nft_info {
+        println!("NFT Results:");
+        println!("  Total NFTs: {}", nft_info.nfts.len());
+        println!("  Verified NFTs: {}", nft_info.statistics.verified_nfts);
+        println!("  Unverified NFTs: {}", nft_info.statistics.unverified_nfts);
+        println!("  NFTs with Security Issues: {}", nft_info.statistics.nfts_with_security_issues);
+        println!("  Unique Collections: {}", nft_info.statistics.unique_collections);
+        println!("  Total Estimated Value: {:.9} SOL", nft_info.total_estimated_value_lamports as f64 / 1_000_000_000.0);
+        println!("  NFT Scan Time: {}ms", nft_info.scan_duration_ms);
+        
+        if dev && !nft_info.nfts.is_empty() {
+            println!("  NFT Details:");
+            for (i, nft) in nft_info.nfts.iter().take(10).enumerate() {
+                println!("    {}. {} - {}", i + 1, 
+                    nft.name.as_ref().unwrap_or(&"Unknown".to_string()),
+                    nft.mint_address
+                );
+                if let Some(collection) = &nft.collection {
+                    println!("       Collection: {}{}", 
+                        collection.name,
+                        if collection.verified { " ✓" } else { " " }
+                    );
+                }
+                if let Some(value) = nft.estimated_value_lamports {
+                    println!("       Estimated Value: {:.9} SOL", value as f64 / 1_000_000_000.0);
+                }
+            }
+            if nft_info.nfts.len() > 10 {
+                println!("    ... and {} more NFTs", nft_info.nfts.len() - 10);
+            }
+        }
+        println!();
+    }
+    
+    // Summary
+    let mut has_recoverable_assets = false;
+    if let Some(sol_info) = &result.sol_info {
+        if sol_info.recoverable_sol > 0.0 {
+            has_recoverable_assets = true;
+        }
+    }
+    
+    #[cfg(feature = "nft")]
+    if let Some(nft_info) = &result.nft_info {
+        if nft_info.total_estimated_value_lamports > 0 {
+            has_recoverable_assets = true;
+        }
+    }
+    
+    if has_recoverable_assets {
+        println!("Summary: This wallet has recoverable assets!");
+    } else {
+        println!("Summary: No recoverable assets found.");
+    }
+}
+
+#[cfg(feature = "nft")]
+fn print_nft_scan_result(result: &solana_recover::NftScanResult, detailed: bool) {
+    println!();
+    println!("NFT Scan Results:");
+    println!("  Wallet Address: {}", result.wallet_address);
+    println!("  Total NFTs: {}", result.nfts.len());
+    println!("  Verified NFTs: {}", result.statistics.verified_nfts);
+    println!("  Unverified NFTs: {}", result.statistics.unverified_nfts);
+    println!("  NFTs with Security Issues: {}", result.statistics.nfts_with_security_issues);
+    println!("  Unique Collections: {}", result.statistics.unique_collections);
+    println!("  Total Estimated Value: {:.9} SOL", result.total_estimated_value_lamports as f64 / 1_000_000_000.0);
+    println!("  Scan Duration: {}ms", result.scan_duration_ms);
+    
+    if detailed && !result.nfts.is_empty() {
+        println!();
+        println!("Detailed NFT Information:");
+        for (i, nft) in result.nfts.iter().enumerate() {
+            println!("\n{}. {}", i + 1, nft.name.as_ref().unwrap_or(&"Unknown".to_string()));
+            println!("   Mint Address: {}", nft.mint_address);
+            println!("   Symbol: {}", nft.symbol.as_ref().unwrap_or(&"N/A".to_string()));
+            
+            if let Some(collection) = &nft.collection {
+                println!("   Collection: {}{}", 
+                    collection.name,
+                    if collection.verified { " ✓" } else { " " }
+                );
+            }
+            
+            if let Some(description) = &nft.description {
+                let short_desc = if description.len() > 200 {
+                    format!("{}...", &description[..200])
+                } else {
+                    description.clone()
+                };
+                println!("   Description: {}", short_desc);
+            }
+            
+            if let Some(value) = nft.estimated_value_lamports {
+                println!("   Estimated Value: {:.9} SOL", value as f64 / 1_000_000_000.0);
+            }
+            
+            println!("   Metadata Verified: {}", if nft.metadata_verified { "✓" } else { "✗" });
+            println!("   Image Verified: {}", if nft.image_verified { "✓" } else { "✗" });
+            println!("   Security Risk Level: {:?}", nft.security_assessment.risk_level);
+            
+            if !nft.creators.is_empty() {
+                println!("   Creators:");
+                for creator in &nft.creators {
+                    println!("     - {}{} ({})", 
+                        creator.address,
+                        if creator.verified { " ✓" } else { " " },
+                        creator.share
+                    );
+                }
+            }
+            
+            if !nft.attributes.is_empty() {
+                println!("   Attributes:");
+                for attr in &nft.attributes {
+                    println!("     - {}: {}", attr.trait_type, attr.value);
+                }
+            }
+        }
+    }
+    
+    if !result.security_issues.is_empty() {
+        println!();
+        println!("Security Issues Found:");
+        for issue in &result.security_issues {
+            println!("  [{}] {}: {}", 
+                match issue.severity {
+                    solana_recover::nft::types::RiskLevel::High => "HIGH",
+                    solana_recover::nft::types::RiskLevel::Medium => "MED",
+                    solana_recover::nft::types::RiskLevel::Low => "LOW",
+                    solana_recover::nft::types::RiskLevel::None => "NONE",
+                },
+                issue.issue_type,
+                issue.description
+            );
+        }
+    }
+}
+
+fn print_total_claim_result_unified(result: &UnifiedTotalClaimResult, dev: bool) {
+    println!();
+    println!("Unified Total Claimable Assets Summary:");
+    println!("  Scan Mode: {:?}", result.scan_mode);
+    println!("  Total wallets: {}", result.total_wallets);
+    println!("  Total recoverable SOL: {:.9}", result.total_recoverable_sol);
+    
+    #[cfg(feature = "nft")]
+    {
+        println!("  Total NFTs: {}", result.total_nfts);
+        println!("  Total NFT value: {:.9} SOL", result.total_nft_value_lamports as f64 / 1_000_000_000.0);
+        
+        let total_value = result.total_recoverable_sol + (result.total_nft_value_lamports as f64 / 1_000_000_000.0);
+        println!("  Total asset value: {:.9} SOL", total_value);
+    }
+    
+    if !result.wallet_results.is_empty() && dev {
+        println!();
+        println!("Wallet Breakdown:");
+        for (address, scan_result) in &result.wallet_results {
+            println!("  {}:", address);
+            
+            if let Some(sol_info) = &scan_result.sol_info {
+                println!("    SOL: {:.9} ({} empty accounts)", 
+                    sol_info.recoverable_sol, sol_info.empty_accounts);
+            }
+            
+            #[cfg(feature = "nft")]
+            if let Some(nft_info) = &scan_result.nft_info {
+                println!("    NFTs: {} ({:.9} SOL)", 
+                    nft_info.nfts.len(),
+                    nft_info.total_estimated_value_lamports as f64 / 1_000_000_000.0);
+            }
+        }
+    }
+    
+    let has_recoverable_assets = result.total_recoverable_sol > 0.0;
+    #[cfg(feature = "nft")]
+    {
+        has_recoverable_assets = has_recoverable_assets || result.total_nft_value_lamports > 0;
+    }
+    
+    if has_recoverable_assets {
+        println!();
+        println!("Total {:.9} SOL in assets is available!", 
+            result.total_recoverable_sol + (result.total_nft_value_lamports as f64 / 1_000_000_000.0));
+    } else {
+        println!();
+        println!("No recoverable assets found from any wallets.");
     }
 }
