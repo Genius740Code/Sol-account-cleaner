@@ -3,6 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/solana-recover.svg)](https://crates.io/crates/solana-recover)
 [![Documentation](https://docs.rs/solana-recover/badge.svg)](https://docs.rs/solana-recover)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-blue.svg)](https://github.com/Genius740Code/Sol-account-cleaner/releases/tag/v1.1.0)
 
 A high-performance Solana wallet scanner and SOL recovery library for Rust. This crate provides a simple yet powerful API for scanning Solana wallets to find empty token accounts and recover SOL from them.
 
@@ -21,7 +22,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-solana-recover = "1.0.41"
+solana-recover = "1.1.0"
 ```
 
 ### Feature Flags
@@ -30,28 +31,29 @@ Use only the features you need to keep your binary small:
 
 ```toml
 # Default: scanner + client
-solana-recover = "1.0.41"
+solana-recover = "1.1.0"
 
 # Minimal - just core types
-solana-recover = { version = "1.0.41", default-features = false }
+solana-recover = { version = "1.1.0", default-features = false }
 
 # Scanner functionality only
-solana-recover = { version = "1.0.41", default-features = false, features = ["scanner"] }
+solana-recover = { version = "1.1.0", default-features = false, features = ["scanner"] }
 
 # Full feature set
-solana-recover = { version = "1.0.41", features = ["full"] }
+solana-recover = { version = "1.1.0", features = ["full"] }
 ```
 
 Available features:
 - `scanner` - Core wallet scanning functionality
-- `client` - HTTP client for external APIs  
+- `recovery` - SOL recovery operations
+- `nft` - NFT scanning and analysis (optional)
 - `api` - REST API server functionality
 - `database` - Database persistence support
 - `cache` - Advanced caching capabilities
 - `metrics` - Prometheus metrics collection
 - `security` - Enhanced security features
 - `config` - Configuration file support
-- `full` - Enables all features
+- `full` - Enables all features including NFT
 
 ## Quick Start
 
@@ -222,6 +224,18 @@ solana-recover batch wallets.txt
 solana-recover batch wallets.txt --dev
 ```
 
+**NFT scanning (with `nft` feature):**
+```bash
+# Scan NFTs in a wallet
+solana-recover nft <ADDRESS>
+
+# Detailed NFT analysis with security checks
+solana-recover nft <ADDRESS> --detailed --security
+
+# Batch NFT scanning
+solana-recover nft-batch wallets.txt
+```
+
 #### **Examples**
 
 ```bash
@@ -240,6 +254,10 @@ solana-recover --wallet <ADDRESS> --destination <DEST> --force
 # Developer mode - show wallet address and empty account details
 solana-recover --wallet <ADDRESS> --dev
 solana-recover --wallet <ADDRESS> -D
+
+# NFT scanning examples
+solana-recover nft B7bQUSYnD56Vk7jEAqU4MWLJQ9LgVnKyWskivPhZQcHg
+solana-recover nft B7bQUSYnD56Vk7jEAqU4MWLJQ9LgVnKyWskivPhZQcHg --detailed --security
 ```
 
 ### Simple CLI Tool
@@ -301,6 +319,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let result = recover_sol(&request, None).await?;
     println!("Recovered {} SOL", result.net_sol);
+    
+    Ok(())
+}
+```
+
+### NFT Scanning (with `nft` feature)
+
+```rust
+use solana_recover::{scan_wallet_nfts, ScanMode};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Scan NFTs in a wallet
+    let result = scan_wallet_nfts("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", None).await?;
+    
+    println!("Found {} NFTs", result.nfts.len());
+    println!("Total estimated value: {:.9} SOL", 
+             result.total_estimated_value_lamports as f64 / 1_000_000_000.0);
+    
+    for nft in result.nfts {
+        println!("NFT: {} ({})", nft.name, nft.mint_address);
+    }
     
     Ok(())
 }
@@ -385,6 +425,9 @@ cargo test
 # Run with specific features
 cargo test --features "full"
 
+# Run with NFT features
+cargo test --features "nft"
+
 # Run integration tests
 cargo test --test integration
 ```
@@ -393,6 +436,9 @@ cargo test --test integration
 
 - [API Documentation](https://docs.rs/solana-recover)
 - [Examples](https://github.com/Genius740Code/Sol-account-cleaner/tree/main/examples)
+- [NFT Module Documentation](docs/NFT_MODULE_DOCUMENTATION.md)
+- [Parallel Processing Guide](docs/PARALLEL_PROCESSING_GUIDE.md)
+- [API Reference](docs/API_DOCUMENTATION.md)
 
 ## Contributing
 
