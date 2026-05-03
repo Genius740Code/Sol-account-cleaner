@@ -491,20 +491,20 @@ impl BatchProcessor {
 
         // Calculate final statistics
         let total_time_ms = start_time.elapsed().as_millis() as u64;
-        result.total_processing_time_ms = total_time_ms;
+        result.statistics.total_processing_time_ms = total_time_ms;
         result.statistics.successful_items = result.successful_results.len();
         result.statistics.failed_items = result.failed_results.len();
-        result.success_rate = if result.statistics.total_items > 0 {
+        result.statistics.success_rate = if result.statistics.total_items > 0 {
             result.statistics.successful_items as f64 / result.statistics.total_items as f64
         } else {
             0.0
         };
-        result.avg_processing_time_ms = if result.statistics.total_items > 0 {
+        result.statistics.avg_processing_time_ms = if result.statistics.total_items > 0 {
             total_time_ms as f64 / result.statistics.total_items as f64
         } else {
             0.0
         };
-        result.throughput = if total_time_ms > 0 {
+        result.statistics.throughput = if total_time_ms > 0 {
             (result.statistics.successful_items as f64 / total_time_ms as f64) * 1000.0
         } else {
             0.0
@@ -528,7 +528,7 @@ impl BatchProcessor {
             std::sync::atomic::Ordering::Relaxed
         );
         self.metrics.avg_batch_time_ms.fetch_add(total_time_ms, std::sync::atomic::Ordering::Relaxed);
-        self.metrics.avg_throughput.fetch_add(result.throughput, std::sync::atomic::Ordering::Relaxed);
+        self.metrics.avg_throughput.fetch_add(result.statistics.throughput, std::sync::atomic::Ordering::Relaxed);
 
         result.completed_at = Some(chrono::Utc::now());
         result.status = if result.statistics.failed_items == 0 {
@@ -943,14 +943,14 @@ impl ResourceMonitor {
         let mem_hist = self.memory_history.lock().unwrap();
         let cpu_hist = self.cpu_history.lock().unwrap();
 
-        let peak_memory = mem_hist.iter().fold(0.0, f64::max);
+        let peak_memory = mem_hist.iter().fold(0.0, |arg0: f64, other: &f64| f64::max(arg0, *other));
         let avg_memory = if !mem_hist.is_empty() {
             mem_hist.iter().sum::<f64>() / mem_hist.len() as f64
         } else {
             0.0
         };
 
-        let peak_cpu = cpu_hist.iter().fold(0.0, f64::max);
+        let peak_cpu = cpu_hist.iter().fold(0.0, |arg0: f64, other: &f64| f64::max(arg0, *other));
         let avg_cpu = if !cpu_hist.is_empty() {
             cpu_hist.iter().sum::<f64>() / cpu_hist.len() as f64
         } else {

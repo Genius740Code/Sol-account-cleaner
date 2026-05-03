@@ -375,8 +375,7 @@ pub struct ComprehensiveRateLimiterStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::sleep;
-
+    
     #[tokio::test]
     async fn test_distributed_rate_limiter() {
         let limiter = DistributedRateLimiter::new(10, Duration::from_secs(1), 5, 100);

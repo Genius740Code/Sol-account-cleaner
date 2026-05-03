@@ -754,8 +754,7 @@ impl Clone for ConfigManager {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
-    use std::io::Write;
-    
+        
     #[test]
     fn test_default_config() {
         let config = AppConfig::default();

@@ -299,8 +299,7 @@ impl RequestMultiplexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::Method;
-
+    
     #[tokio::test]
     async fn test_http2_client_creation() {
         let config = Http2Config::default();

@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::storage::{CacheConfig, DatabaseConfig, SqlitePersistenceManager};
+    use crate::storage::{CacheConfig, DatabaseConfig, SqlitePersistenceManager, persistence::PersistenceManager, CacheManager};
     use crate::core::{ScanResult, WalletInfo, ScanStatus};
     use uuid::Uuid;
     use std::str::FromStr;
@@ -22,7 +21,7 @@ mod tests {
         let cache = CacheManager::new(config);
         
         // Test that cache was created successfully
-        assert_eq!(cache.get_stats().size, 0);
+        assert_eq!(cache.stats().total_entries, 0);
     }
 
     #[tokio::test]
@@ -54,11 +53,11 @@ mod tests {
         };
 
         // Test put
-        let put_result = cache.put_scan_result(&scan_result).await;
+        let put_result = cache.set(&scan_result.wallet_address, &scan_result).await;
         assert!(put_result.is_ok());
 
         // Test get
-        let get_result = cache.get_scan_result(&scan_result.wallet_address).await;
+        let get_result: Result<Option<crate::core::ScanResult>, crate::core::SolanaRecoverError> = cache.get(&scan_result.wallet_address).await;
         assert!(get_result.is_ok());
         assert!(get_result.unwrap().is_some());
     }
@@ -92,11 +91,11 @@ mod tests {
         };
 
         // Test put
-        let put_result = cache.put_scan_result(&scan_result).await;
+        let put_result = cache.set(&scan_result.wallet_address, &scan_result).await;
         assert!(put_result.is_ok());
 
         // Test get immediately (should work)
-        let get_result = cache.get_scan_result(&scan_result.wallet_address).await;
+        let get_result: Result<Option<crate::core::ScanResult>, crate::core::SolanaRecoverError> = cache.get(&scan_result.wallet_address).await;
         assert!(get_result.is_ok());
         assert!(get_result.unwrap().is_some());
 
@@ -104,7 +103,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
         // Test get after TTL (should return None)
-        let get_result = cache.get_scan_result(&scan_result.wallet_address).await;
+        let get_result: Result<Option<crate::core::ScanResult>, crate::core::SolanaRecoverError> = cache.get(&scan_result.wallet_address).await;
         assert!(get_result.is_ok());
         assert!(get_result.unwrap().is_none());
     }

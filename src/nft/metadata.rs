@@ -410,16 +410,16 @@ impl MetadataFetcher {
                 value: Some(mint_address.to_string()),
             })?;
 
-        let connection = self.connection_pool.get_connection().await
+        let connection = self.connection_pool.get_client_internal().await
             .ok_or_else(|| NftError::Network {
                 message: "No available RPC connections".to_string(),
-                source: "connection_pool".to_string(),
+                source_info: "connection_pool".to_string(),
             })?;
 
         let account = connection.get_account(&mint_pubkey).await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to fetch account: {}", e),
-                source: "rpc".to_string(),
+                source_info: "rpc".to_string(),
             })?;
 
         // Convert to UiAccount for compatibility
@@ -849,13 +849,13 @@ impl ImageProcessor {
         let response = self.http_client.get(image_uri).send().await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to fetch image: {}", e),
-                source: "http".to_string(),
+                source_info: Some("http".to_string()),
             })?;
 
         if !response.status().is_success() {
             return Err(NftError::Network {
                 message: format!("HTTP error fetching image: {}", response.status()),
-                source: "http".to_string(),
+                source_info: Some("http".to_string()),
             });
         }
 
@@ -876,7 +876,7 @@ impl ImageProcessor {
         let image_data = response.bytes().await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to read image data: {}", e),
-                source: "http".to_string(),
+                source_info: Some("http".to_string()),
             })?;
 
         // Check size limit
@@ -957,13 +957,13 @@ impl MetadataFetchStrategy for HttpMetadataFetcher {
         let response = self.http_client.get(uri).send().await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to fetch metadata: {}", e),
-                source: "http".to_string(),
+                source_info: Some("http".to_string()),
             })?;
 
         if !response.status().is_success() {
             return Err(NftError::Network {
                 message: format!("HTTP error: {}", response.status()),
-                source: "http".to_string(),
+                source_info: Some("http".to_string()),
             });
         }
 
@@ -1044,7 +1044,7 @@ impl MetadataFetchStrategy for IpfsMetadataFetcher {
 
         Err(NftError::Network {
             message: "All IPFS gateways failed".to_string(),
-            source: "ipfs".to_string(),
+            source_info: "ipfs".to_string(),
         })
     }
 
@@ -1077,13 +1077,13 @@ impl MetadataFetchStrategy for ArweaveMetadataFetcher {
         let response = self.http_client.get(uri).send().await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to fetch Arweave metadata: {}", e),
-                source: "arweave".to_string(),
+                source_info: Some("arweave".to_string()),
             })?;
 
         if !response.status().is_success() {
             return Err(NftError::Network {
                 message: format!("Arweave HTTP error: {}", response.status()),
-                source: "arweave".to_string(),
+                source_info: Some("arweave".to_string()),
             });
         }
 

@@ -489,7 +489,13 @@ impl Default for AuditLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_sdk::{signature::Keypair, signature::Signer, transaction::Transaction, message::Message};
+    use solana_sdk::{
+        signature::Keypair,
+        signature::Signer,
+        transaction::Transaction,
+        message::Message,
+        hash::Hash,
+    };
 
     #[tokio::test]
     async fn test_audit_logging() {

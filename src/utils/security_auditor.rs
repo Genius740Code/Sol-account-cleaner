@@ -438,8 +438,7 @@ impl AuditStatistics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::sleep;
-
+    
     #[tokio::test]
     async fn test_audit_entry_creation() {
         let entry = AuditEntry::new(
@@ -485,7 +484,7 @@ mod tests {
     async fn test_tamper_detection() {
         let auditor = SecurityAuditor::new();
         
-        let mut entry = AuditEntry::new(
+        let entry = AuditEntry::new(
             "test_operation".to_string(),
             Some("test_user".to_string()),
             None,

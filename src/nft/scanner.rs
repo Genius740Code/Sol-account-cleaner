@@ -14,6 +14,7 @@ use crate::nft::valuation::ValuationEngine;
 use crate::rpc::ConnectionPool;
 use crate::core::types::RpcEndpoint;
 use futures::{stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, info, warn};
