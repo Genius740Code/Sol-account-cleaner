@@ -10,8 +10,6 @@ pub struct ObjectPool<T> {
     objects: Arc<tokio::sync::Mutex<VecDeque<T>>>,
     factory: Box<dyn Fn() -> T + Send + Sync>,
     reset_fn: Option<Box<dyn Fn(&mut T) + Send + Sync>>,
-    #[allow(dead_code)]
-    max_size: usize,
     current_size: Arc<std::sync::atomic::AtomicUsize>,
     metrics: Arc<RwLock<PoolMetrics>>,
     config: PoolConfig,
@@ -79,7 +77,6 @@ where
             objects: Arc::new(tokio::sync::Mutex::new(VecDeque::with_capacity(config.max_size))),
             factory: Box::new(factory),
             reset_fn: None,
-            max_size: config.max_size,
             current_size: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             metrics: Arc::new(RwLock::new(PoolMetrics::default())),
             config,
@@ -151,48 +148,7 @@ where
         }
     }
 
-    /// Return an object to the pool
-    #[allow(dead_code)]
-    async fn return_object(&self, object: T) {
-        let current_size = self.current_size.load(std::sync::atomic::Ordering::Relaxed);
-        
-        if current_size < self.max_size {
-            let mut objects = self.objects.lock().await;
-            objects.push_back(object);
-            self.current_size.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            
-            // Update metrics
-            if self.config.enable_metrics {
-                let _metrics = self.metrics.write().await;
-                // Note: lifetime tracking disabled since checkout_time was removed
-            }
-        } else {
-            // Pool is full, discard the object
-            if self.config.enable_metrics {
-                let mut _metrics = self.metrics.write().await;
-                _metrics.total_discarded += 1;
-            }
-        }
-    }
 
-    /// Preallocate initial objects
-    #[allow(dead_code)]
-    async fn preallocate_initial_objects(&self) {
-        let mut objects = self.objects.lock().await;
-        let initial_count = std::cmp::min(self.config.initial_size, self.config.max_size);
-        
-        for _ in 0..initial_count {
-            objects.push_back((self.factory)());
-            self.current_size.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
-        
-        if self.config.enable_metrics {
-            let mut metrics = self.metrics.write().await;
-            metrics.total_created = initial_count as u64;
-            metrics.current_size = initial_count;
-            metrics.peak_size = initial_count;
-        }
-    }
 
     /// Start background cleanup task
     fn start_cleanup_task(&self) {
@@ -201,13 +157,6 @@ where
         tracing::warn!("Object pool cleanup task disabled due to Clone limitations");
     }
 
-    /// Perform cleanup of idle objects
-    #[allow(dead_code)]
-    async fn perform_cleanup(&self, _max_idle_time: Duration) -> Result<()> {
-        // For generic objects, we can't track idle time without additional metadata
-        // This is a placeholder for more sophisticated cleanup logic
-        Ok(())
-    }
 
     /// Update hit rate metric
     fn update_hit_rate(&self, metrics: &mut PoolMetrics) {
@@ -217,15 +166,6 @@ where
         }
     }
 
-    /// Update lifetime metrics
-    #[allow(dead_code)]
-    fn update_lifetime_metrics(&self, metrics: &mut PoolMetrics, lifetime: f64) {
-        let total_reused = metrics.total_reused;
-        if total_reused > 0 {
-            metrics.avg_lifetime_ms = 
-                (metrics.avg_lifetime_ms * (total_reused - 1) as f64 + lifetime) / total_reused as f64;
-        }
-    }
 
     /// Get current pool metrics
     pub async fn get_metrics(&self) -> PoolMetrics {

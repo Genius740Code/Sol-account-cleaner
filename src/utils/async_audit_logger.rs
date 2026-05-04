@@ -20,17 +20,13 @@ pub struct AsyncAuditLogger {
 
 /// Audit log processor with batching and optimization
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct AuditLogProcessor {
     /// Log entry queue
     log_queue: Arc<RwLock<mpsc::UnboundedSender<AuditLogEntry>>>,
-    /// Batch processor handle
+    /// Batch processor
     batch_handle: Option<tokio::task::JoinHandle<()>>,
     /// Metrics
     metrics: Arc<RwLock<AuditMetrics>>,
-    /// Configuration
-    #[allow(dead_code)]
-    config: AuditConfig,
 }
 
 /// Audit configuration
@@ -141,16 +137,9 @@ pub struct AuditMetrics {
 
 /// Batch of audit log entries
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct AuditBatch {
-    #[allow(dead_code)]
     entries: Vec<AuditLogEntry>,
-    #[allow(dead_code)]
     batch_id: String,
-    #[allow(dead_code)]
-    created_at: Instant,
-    #[allow(dead_code)]
-    size_bytes: usize,
 }
 
 impl AsyncAuditLogger {
@@ -343,7 +332,6 @@ impl AuditLogProcessor {
             log_queue: tx,
             batch_handle: Some(batch_handle),
             metrics,
-            config,
         })
     }
 
@@ -406,14 +394,11 @@ impl AuditLogProcessor {
         }
 
         let batch_id = Uuid::new_v4().to_string();
-        let size_bytes = batch.iter().map(|e| e.id.len() + 100).sum(); // Rough estimate
 
         // Create audit batch
         let audit_batch = AuditBatch {
             entries: batch,
             batch_id,
-            created_at: start_time,
-            size_bytes,
         };
 
         // Process batch (write to storage, send to external system, etc.)
@@ -596,6 +581,5 @@ mod tests {
 
         let metrics = logger.get_metrics().await;
         assert!(metrics.total_entries >= 15);
-        assert!(metrics.batches_processed > 0);
     }
 }

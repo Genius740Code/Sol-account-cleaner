@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::{RpcEndpoint, Result, SolanaRecoverError};
+    use crate::core::RpcEndpoint;
     use crate::rpc::{ConnectionPool, ConnectionPoolTrait};
 
     #[tokio::test]

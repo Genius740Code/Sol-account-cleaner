@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::rpc::{EnhancedConnectionPool, EnhancedPoolConfig, BasicConnectionPool, WeightedEndpoint, LoadBalancer, CircuitBreaker, HealthChecker, ConnectionPoolTrait, LoadBalanceStrategy};
-    use crate::core::{RpcEndpoint, SolanaRecoverError};
+    use crate::rpc::{EnhancedConnectionPool, EnhancedPoolConfig, WeightedEndpoint, LoadBalanceStrategy};
+    use crate::core::RpcEndpoint;
     use std::time::Duration;
-    use std::sync::Arc;
 
     fn create_test_endpoints() -> Vec<RpcEndpoint> {
         vec![

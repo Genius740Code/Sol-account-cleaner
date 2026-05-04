@@ -474,11 +474,11 @@ mod tests {
     async fn test_compression_engine() {
         let engine = CompressionEngine::new(true, 10);
         
-        let data = b"This is a test string that should be compressed because it's longer than the threshold";
-        let compressed = engine.compress(data).unwrap();
+        let data = "This is a test string that should be compressed because it's longer than the threshold. ".repeat(10).into_bytes();
+        let compressed = engine.compress(&data).unwrap();
         let decompressed = engine.decompress(&compressed).unwrap();
         
-        assert_eq!(data.to_vec(), decompressed);
+        assert_eq!(data, decompressed);
         assert!(compressed.len() < data.len()); // Should be compressed
     }
 }

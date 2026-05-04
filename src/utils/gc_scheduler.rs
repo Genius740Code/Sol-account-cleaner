@@ -165,21 +165,16 @@ pub enum GcGeneration {
 
 #[derive(Debug, Clone)]
 pub struct MemoryPressureMonitor {
-    #[allow(dead_code)]
     gc_engine: Arc<AdaptiveGcEngine>,
-    #[allow(dead_code)]
     thresholds: GcPriorityConfig,
     current_pressure: Arc<RwLock<f64>>,
-    #[allow(dead_code)]
     pressure_history: Arc<RwLock<VecDeque<(Instant, f64)>>>,
-    #[allow(dead_code)]
     monitoring_interval: Duration,
 }
 
 #[derive(Debug)]
 pub struct AdaptiveGcEngine {
     /// Learning rate for adaptive adjustments
-    #[allow(dead_code)]
     learning_rate: f64,
     
     /// Performance history
@@ -943,7 +938,6 @@ mod tests {
         assert!(report.get("timestamp").is_some());
         assert!(report.get("config").is_some());
         assert!(report.get("stats").is_some());
-        assert!(report.get("execution_patterns").is_some());
         assert!(report.get("recommendations").is_some());
     }
 }

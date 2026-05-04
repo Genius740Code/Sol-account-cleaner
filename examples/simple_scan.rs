@@ -35,18 +35,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let elapsed = start_time.elapsed();
     
     println!("Scan Results:");
-    println!("  Wallet Address: {}", result.wallet_address);
+    println!("  Wallet Address: {}", result.address);
     println!("  Total Accounts: {}", result.total_accounts);
-    println!("  Empty Accounts: {}", result.empty_accounts.len());
+    println!("  Empty Accounts: {}", result.empty_accounts);
     println!("  Recoverable SOL: {:.9} SOL", result.recoverable_sol);
     println!("  Scan Time: {}ms (reported)", result.scan_time_ms);
     println!("  Total Time: {}ms (actual)", elapsed.as_millis());
     
-    if !result.empty_accounts.is_empty() {
+    if result.empty_accounts > 0 {
         println!();
         println!("Empty Account Addresses:");
-        for (i, account) in result.empty_accounts.iter().enumerate() {
-            println!("  {}. {} ({} lamports)", i + 1, account.address, account.lamports);
+        for (i, account_address) in result.empty_account_addresses.iter().enumerate() {
+            println!("  {}. {}", i + 1, account_address);
         }
     }
     

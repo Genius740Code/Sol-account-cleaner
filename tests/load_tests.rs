@@ -1,16 +1,16 @@
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, error, debug};
+use tracing::info;
 
-use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
-use crate::core::enhanced_scanner::EnhancedWalletScanner;
-use crate::core::parallel_processor::{IntelligentParallelProcessor, Priority};
-use crate::utils::memory_integration::MemoryIntegrationLayer;
-use crate::utils::enhanced_metrics::{EnhancedMetricsCollector, EnhancedMetricsConfig};
-use crate::tests::performance_tests::{PerformanceTestSuite, PerformanceTestConfig};
+use solana_recover::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
+use solana_recover::core::enhanced_scanner::EnhancedWalletScanner;
+use solana_recover::core::adaptive_parallel_processor::{AdaptiveParallelProcessor, ProcessorConfig as LegacyProcessorConfig};
+use solana_recover::utils::memory_integration::MemoryIntegrationLayer;
+use solana_recover::utils::enhanced_metrics::{EnhancedMetricsCollector, EnhancedMetricsConfig};
 
 /// Comprehensive load testing suite
 pub struct LoadTestSuite {
@@ -169,9 +169,9 @@ pub struct LoadTestResultsCollector {
     response_times: Arc<tokio::sync::Mutex<Vec<Duration>>>,
     errors: Arc<tokio::sync::Mutex<Vec<LoadTestError>>>,
     resource_samples: Arc<tokio::sync::Mutex<Vec<ResourceSample>>>,
-    request_count: Arc<tokio::sync::AtomicU64>,
-    success_count: Arc<tokio::sync::AtomicU64>,
-    error_count: Arc<tokio::sync::AtomicU64>,
+    request_count: Arc<AtomicU64>,
+    success_count: Arc<AtomicU64>,
+    error_count: Arc<AtomicU64>,
     start_time: Instant,
 }
 
@@ -385,7 +385,7 @@ impl LoadTestSuite {
     }
 
     /// Ramp down users gradually
-    async fn ramp_down_users(&self, semaphore: &Arc<Semaphore>, _config: &LoadTestConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn ramp_down_users(&self, _semaphore: &Arc<Semaphore>, _config: &LoadTestConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // In a real implementation, you would gradually release permits
         // For now, we'll just wait for existing tasks to complete
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -607,9 +607,9 @@ impl LoadTestResultsCollector {
             response_times: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             errors: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             resource_samples: Arc::new(tokio::sync::Mutex::new(Vec::new())),
-            request_count: Arc::new(tokio::sync::AtomicU64::new(0)),
-            success_count: Arc::new(tokio::sync::AtomicU64::new(0)),
-            error_count: Arc::new(tokio::sync::AtomicU64::new(0)),
+            request_count: Arc::new(AtomicU64::new(0)),
+            success_count: Arc::new(AtomicU64::new(0)),
+            error_count: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
         }
     }

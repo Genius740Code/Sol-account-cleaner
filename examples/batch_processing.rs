@@ -5,11 +5,12 @@
 
 use solana_recover::*;
 use std::sync::Arc;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 use tokio::time::Instant;
+use solana_recover::{config::Config, utils::{Logger, LoggingConfig}, rpc::ConnectionPool};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     let logging_config = LoggingConfig {
         level: "info".to_string(),
@@ -43,13 +44,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let connection_pool = Arc::new(ConnectionPool::new(rpc_endpoints, config.rpc.pool_size));
     
     // Create scanner and batch processor
-    let scanner = Arc::new(WalletScanner::new(connection_pool));
-    let batch_processor = Arc::new(BatchProcessor::new(
-        scanner.clone(),
-        None, // No cache for this example
-        None, // No persistence for this example
-        config.scanner.into(),
-    ));
+    let scanner = Arc::new(WalletScanner::new(connection_pool.clone()));
+    let batch_processor = {
+        let processor = BatchProcessor::new(
+            scanner,
+            None, // No cache for this example
+            None, // No persistence for this example
+            config.scanner.into(),
+        )?;
+        Arc::new(processor)
+    };
     
     // Example wallet addresses to scan
     let wallet_addresses = vec![
@@ -70,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create batch request
     let batch_request = BatchScanRequest {
         id: uuid::Uuid::new_v4(),
-        wallet_addresses: wallet_addresses.clone(),
+        wallet_addresses: wallet_addresses.iter().map(|s| s.to_string()).collect(),
         user_id: Some("batch_example_user".to_string()),
         fee_percentage: Some(0.15), // 15% fee
         created_at: chrono::Utc::now(),
@@ -86,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let duration = start_time.elapsed();
             
             info!("Batch scan completed successfully!");
-            info!("Batch ID: {:?}", batch_result.id);
+            info!("Batch ID: {:?}", batch_result.request_id);
             info!("Total wallets: {}", batch_result.total_wallets);
             info!("Successful scans: {}", batch_result.successful_scans);
             info!("Failed scans: {}", batch_result.failed_scans);
@@ -100,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 minimum_lamports: 1_000_000,
                 maximum_lamports: Some(10_000_000),
                 waive_below_lamports: Some(5_000_000),
+                firm_wallet_address: None,
             };
             
             let mut total_recoverable = 0.0;
@@ -133,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!(
                             "✗ {}: Failed - {}",
                             scan_result.wallet_address,
-                            scan_result.error.as_deref().unwrap_or("Unknown error")
+                            scan_result.error_message.as_deref().unwrap_or("Unknown error")
                         );
                     }
                     _ => {
@@ -189,7 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let handle = tokio::spawn(async move {
             let concurrent_request = BatchScanRequest {
                 id: uuid::Uuid::new_v4(),
-                wallet_addresses: batch_wallets,
+                wallet_addresses: batch_wallets.iter().map(|s| s.to_string()).collect(),
                 user_id: Some(format!("concurrent_user_{}", batch_num)),
                 fee_percentage: Some(0.10), // 10% fee for concurrent batches
                 created_at: chrono::Utc::now(),

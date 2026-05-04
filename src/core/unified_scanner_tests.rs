@@ -317,16 +317,14 @@ mod tests {
         assert_eq!(config.app_name, deserialized.app_name);
     }
 
-    #[test]
-    fn test_config_manager_creation() {
+    #[tokio::test]
+    async fn test_config_manager_creation() {
         let config = AppConfig::default();
         let manager = ConfigManager::new(config);
         
         // Should be able to get config
-        tokio::spawn(async move {
-            let retrieved_config = manager.get_config().await;
-            assert_eq!(retrieved_config.environment, Environment::Development);
-        });
+        let retrieved_config = manager.get_config().await;
+        assert_eq!(retrieved_config.environment, Environment::Development);
     }
 
     #[test]

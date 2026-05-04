@@ -2,18 +2,18 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use serde::{Deserialize, Serialize};
-use solana_sdk::pubkey::Pubkey;
-use tracing::{info, warn, error};
+use tracing::info;
 
-use crate::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
-use crate::core::enhanced_scanner::EnhancedWalletScanner;
-use crate::core::parallel_processor::{IntelligentParallelProcessor, Priority};
-use crate::utils::memory_integration::MemoryIntegrationLayer;
-use crate::utils::http2_client::Http2Client;
-use crate::utils::hardware_encryption::HardwareEncryptionEngine;
-use crate::utils::async_audit_logger::AsyncAuditLogger;
+use solana_recover::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
+use solana_recover::core::enhanced_scanner::EnhancedWalletScanner;
+use solana_recover::core::adaptive_parallel_processor::{AdaptiveParallelProcessor, ProcessorConfig as LegacyProcessorConfig};
+use solana_recover::utils::memory_integration::MemoryIntegrationLayer;
+use solana_recover::utils::http2_client::Http2Client;
+use solana_recover::utils::hardware_encryption::HardwareEncryptionEngine;
+use solana_recover::utils::async_audit_logger::AsyncAuditLogger;
 
 /// Comprehensive performance testing suite
+#[derive(Clone)]
 pub struct PerformanceTestSuite {
     /// Test configuration
     config: PerformanceTestConfig,
@@ -303,7 +303,7 @@ impl PerformanceTestSuite {
         let semaphore = Arc::new(Semaphore::new(self.config.concurrent_wallets));
 
         let mut handles = Vec::new();
-        for wallet in warmup_wallets {
+        for _wallet in warmup_wallets {
             let permit = semaphore.clone().acquire_owned().await?;
             let handle = tokio::spawn(async move {
                 let _permit = permit;
@@ -330,10 +330,10 @@ impl PerformanceTestSuite {
         let start_time = Instant::now();
         let mut handles = Vec::new();
 
-        for wallet in test_wallets {
+        for _wallet in test_wallets {
             let permit = semaphore.clone().acquire_owned().await?;
             let results_collector = self.results_collector.clone();
-            let config = self.config.clone();
+            let _config = self.config.clone();
 
             let handle = tokio::spawn(async move {
                 let _permit = permit;
@@ -360,7 +360,12 @@ impl PerformanceTestSuite {
 
         // Monitor resource usage during test
         let monitoring_handle = if self.config.enable_memory_profiling || self.config.enable_network_profiling {
-            Some(tokio::spawn(self.monitor_resource_usage()))
+            Some(tokio::spawn({
+                let this = self.clone();
+                async move {
+                    this.monitor_resource_usage().await
+                }
+            }))
         } else {
             None
         };

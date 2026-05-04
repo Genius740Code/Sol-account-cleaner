@@ -475,11 +475,11 @@ impl SafeMemoryManager {
     }
     
     pub fn track_allocation(&self, id: String, size: usize) {
-        self.leak_detector.track_allocation(id, size);
+        let _ = self.leak_detector.track_allocation(id, size);
     }
     
     pub fn track_deallocation(&self, id: &str) {
-        self.leak_detector.track_deallocation(id);
+        let _ = self.leak_detector.track_deallocation(id);
     }
     
     pub async fn detect_leaks(&self, max_age_seconds: u64) -> Vec<LeakInfo> {

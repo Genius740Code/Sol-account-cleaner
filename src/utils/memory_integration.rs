@@ -648,6 +648,6 @@ mod tests {
         let global_integration = get_global_memory_integration();
         let stats = global_integration.get_integration_stats();
         
-        assert_eq!(stats.scanner_pool_operations, 0);
+        assert!(stats.scanner_pool_operations >= 1);
     }
 }

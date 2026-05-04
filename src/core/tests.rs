@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::core::{WalletInfo, EmptyAccount, ScanResult, ScanStatus, WalletScanner};
-    use crate::rpc::ConnectionPool;
+    use crate::core::{WalletInfo, EmptyAccount, ScanStatus, WalletScanner};
     use solana_sdk::pubkey::Pubkey;
     use std::str::FromStr;
 

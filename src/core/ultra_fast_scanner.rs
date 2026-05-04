@@ -23,10 +23,6 @@ pub struct PrefetchData {
 
 /// Ultra-fast scan optimizer with intelligent batching
 pub struct ScanOptimizer {
-    #[allow(dead_code)]
-    cache: Arc<MultiLevelCache>,
-    #[allow(dead_code)]
-    batch_sizes: Arc<RwLock<HashMap<usize, usize>>>,
     optimization_history: Arc<DashMap<String, ScanOptimization>>,
 }
 
@@ -43,8 +39,6 @@ pub struct ScanOptimization {
 pub struct ConnectionMultiplexer {
     connection_pool: Arc<dyn ConnectionPoolTrait>,
     active_connections: Arc<DashMap<u64, Arc<RpcClientWrapper>>>,
-    #[allow(dead_code)]
-    connection_metrics: Arc<RwLock<ConnectionMetrics>>,
     max_connections: usize,
     connection_counter: AtomicU64,
 }
@@ -84,11 +78,7 @@ pub enum BatchStrategy {
 
 /// Fast path scanner for common patterns
 pub struct FastPathScanner {
-    #[allow(dead_code)]
-    common_patterns: Arc<DashMap<String, FastPathPattern>>,
-    #[allow(dead_code)]
     pattern_cache: Arc<RwLock<HashMap<String, WalletInfo>>>,
-    #[allow(dead_code)]
     fast_path_enabled: AtomicU64,
 }
 
@@ -128,10 +118,8 @@ pub enum OptimizationHint {
 }
 
 impl ScanOptimizer {
-    pub fn new(cache: Arc<MultiLevelCache>) -> Self {
+    pub fn new(_cache: Arc<MultiLevelCache>) -> Self {
         Self {
-            cache,
-            batch_sizes: Arc::new(RwLock::new(HashMap::new())),
             optimization_history: Arc::new(DashMap::new()),
         }
     }
@@ -264,13 +252,7 @@ impl ScanOptimizer {
         std::cmp::max(5, std::cmp::min(adjusted_size, 200))
     }
 
-    #[allow(dead_code)]
-    async fn adjust_batch_size(&self, base_size: usize, wallet_address: &str) -> usize {
-        // This method is now deprecated in favor of adjust_batch_size_dynamic
-        // Keeping for backward compatibility
-        self.adjust_batch_size_dynamic(base_size, wallet_address).await
-    }
-
+    
     pub async fn record_performance(&self, wallet_address: &str, scan_time_ms: u64, success: bool) {
         if let Some(mut optimization) = self.optimization_history.get_mut(wallet_address) {
             let new_time = scan_time_ms as f64;
@@ -293,7 +275,6 @@ impl ConnectionMultiplexer {
         Self {
             connection_pool,
             active_connections: Arc::new(DashMap::new()),
-            connection_metrics: Arc::new(RwLock::new(ConnectionMetrics::default())),
             max_connections,
             connection_counter: AtomicU64::new(0),
         }
@@ -430,7 +411,6 @@ struct PerformanceMetrics {
 impl FastPathScanner {
     pub fn new() -> Self {
         Self {
-            common_patterns: Arc::new(DashMap::new()),
             pattern_cache: Arc::new(RwLock::new(HashMap::new())),
             fast_path_enabled: AtomicU64::new(1),
         }

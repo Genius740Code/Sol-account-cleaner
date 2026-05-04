@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::api::server::{ScanRequest, ApiResponse};
-    use crate::core::{BatchScanRequest, ScanResult, ScanStatus};
+    use crate::core::BatchScanRequest;
     use uuid::Uuid;
 
     #[tokio::test]

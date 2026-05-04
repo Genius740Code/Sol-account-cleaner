@@ -12,16 +12,11 @@ use tracing::info;
 #[derive(Clone)]
 pub struct BatchProcessor {
     scanner: Arc<crate::core::scanner::WalletScanner>,
-    #[allow(dead_code)]
     cache_manager: Option<Arc<crate::storage::CacheManager>>,
-    #[allow(dead_code)]
     persistence_manager: Option<Arc<dyn crate::storage::PersistenceManager>>,
     max_concurrent_scans: usize,
-    #[allow(dead_code)]
     batch_size: usize,
-    #[allow(dead_code)]
     retry_attempts: u32,
-    #[allow(dead_code)]
     retry_delay_ms: u64,
     intelligent_processor: Option<Arc<AdaptiveParallelProcessor>>,
     config: ProcessorConfig,

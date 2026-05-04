@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod wallet_tests {
-    use super::*;
     use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType, WalletManager, WalletManagerConfig};
 
     #[tokio::test]
@@ -61,7 +60,6 @@ mod wallet_tests {
 
 #[cfg(test)]
 mod turnkey_tests {
-    use super::*;
     use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType};
     use crate::wallet::manager::WalletProvider;
 
@@ -109,7 +107,6 @@ mod turnkey_tests {
 
 #[cfg(test)]
 mod phantom_tests {
-    use super::*;
     use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType};
     use crate::wallet::manager::WalletProvider;
 
@@ -173,7 +170,6 @@ mod phantom_tests {
 
 #[cfg(test)]
 mod solflare_tests {
-    use super::*;
     use crate::wallet::solflare::{SolflareProvider, SolflareConfig};
     use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType};
     use crate::wallet::manager::WalletProvider;
@@ -229,7 +225,6 @@ mod solflare_tests {
 
 #[cfg(test)]
 mod integration_tests {
-    use super::*;
     use crate::wallet::{WalletCredentials, WalletCredentialData, WalletType, WalletManager};
 
     #[tokio::test]
@@ -332,7 +327,6 @@ mod integration_tests {
 
 #[cfg(test)]
 mod serialization_tests {
-    use super::*;
     use crate::wallet::{WalletCredentials, WalletCredentialData, WalletConnection, WalletType, WalletManagerConfig, ConnectionData};
     use uuid::Uuid;
 

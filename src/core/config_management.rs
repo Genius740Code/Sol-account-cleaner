@@ -800,7 +800,7 @@ mod tests {
         let original_config = AppConfig::default();
         
         // Create temporary file
-        let mut temp_file = NamedTempFile::new()?;
+        let temp_file = NamedTempFile::new()?;
         let temp_path = temp_file.path();
         
         // Save config

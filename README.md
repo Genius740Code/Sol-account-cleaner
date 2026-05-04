@@ -3,7 +3,6 @@
 [![Crates.io](https://img.shields.io/crates/v/solana-recover.svg)](https://crates.io/crates/solana-recover)
 [![Documentation](https://docs.rs/solana-recover/badge.svg)](https://docs.rs/solana-recover)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-blue.svg)](https://github.com/Genius740Code/Sol-account-cleaner/releases/tag/v1.1.0)
 
 A high-performance Solana wallet scanner and SOL recovery library for Rust. This crate provides a simple yet powerful API for scanning Solana wallets to find empty token accounts and recover SOL from them.
 

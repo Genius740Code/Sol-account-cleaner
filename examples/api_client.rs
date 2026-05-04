@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, error, warn};
+use solana_recover::utils::{Logger, LoggingConfig};
 
 #[derive(Debug, Serialize)]
 struct ScanRequest {
@@ -116,8 +117,9 @@ impl ApiClient {
             let scan_result: ScanResponse = response.json().await?;
             Ok(scan_result)
         } else {
+            let status = response.status();
             let error_text = response.text().await?;
-            Err(format!("Scan request failed: {} - {}", response.status(), error_text).into())
+            Err(format!("Scan request failed: {} - {}", status, error_text).into())
         }
     }
     
@@ -140,8 +142,9 @@ impl ApiClient {
             let batch_result: BatchScanResponse = response.json().await?;
             Ok(batch_result)
         } else {
+            let status = response.status();
             let error_text = response.text().await?;
-            Err(format!("Batch scan request failed: {} - {}", response.status(), error_text).into())
+            Err(format!("Batch scan request failed: {} - {}", status, error_text).into())
         }
     }
     
@@ -159,9 +162,9 @@ impl ApiClient {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    let logging_config = solana_recover::LoggingConfig {
+    let logging_config = LoggingConfig {
         level: "info".to_string(),
         format: solana_recover::utils::LogFormat::Pretty,
         output: solana_recover::utils::LogOutput::Stdout,
@@ -169,7 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         json_fields: vec![],
     };
     
-    solana_recover::Logger::init(logging_config)?;
+    Logger::init(logging_config)?;
     
     info!("Starting API client example");
     
@@ -249,7 +252,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let start_time = std::time::Instant::now();
     
-    match api_client.batch_scan(batch_addresses, Some(0.10)).await {
+    match api_client.batch_scan(batch_addresses.iter().map(|s| s.to_string()).collect(), Some(0.10)).await {
         Ok(response) => {
             let duration = start_time.elapsed();
             
@@ -268,7 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // Show individual results
             println!("\n=== Individual Results ===");
-            for (i, result) in response.results.iter().enumerate() {
+            for (_i, result) in response.results.iter().enumerate() {
                 match result.status.as_str() {
                     "completed" => {
                         if let Some(wallet_info) = &result.result {

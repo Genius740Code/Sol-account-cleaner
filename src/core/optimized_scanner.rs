@@ -516,7 +516,6 @@ impl OptimizedWalletScanner {
     }
 
     /// Get rent exemption with caching
-    #[allow(dead_code)]
     async fn get_rent_exemption_with_cache(&self, account_size: usize) -> Result<u64> {
         let cache_key = format!("rent_exemption:{}", account_size);
         
@@ -546,7 +545,6 @@ impl OptimizedWalletScanner {
     }
 
     /// Optimized token account check
-    #[allow(dead_code)]
     async fn check_token_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount) -> Result<Option<EmptyAccount>> {
         // Similar to original but with optimizations
         match &account.data {
@@ -601,7 +599,6 @@ impl OptimizedWalletScanner {
     }
 
     /// Optimized system account check
-    #[allow(dead_code)]
     async fn check_system_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, _min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
         if !account.executable {
             let is_data_empty = self.is_account_data_empty(&account.data);
@@ -620,7 +617,6 @@ impl OptimizedWalletScanner {
     }
 
     /// Optimized other account check
-    #[allow(dead_code)]
     async fn check_other_account_optimized(&self, _keyed_account: &solana_client::rpc_response::RpcKeyedAccount, _account_pubkey_str: &str, account: &solana_account_decoder::UiAccount, _min_rent_exemption: u64) -> Result<Option<EmptyAccount>> {
         if !account.executable && account.lamports > 0 {
             let tolerance = _min_rent_exemption / 10;
@@ -700,7 +696,6 @@ impl OptimizedWalletScanner {
 
     /// Process cached accounts into wallet info
     /// Process cached accounts
-    #[allow(dead_code)]
     async fn process_cached_accounts(&self, accounts: Vec<solana_client::rpc_response::RpcKeyedAccount>, wallet_address: &str) -> Result<WalletInfo> {
         let total_accounts = accounts.len();
         let empty_accounts = self.process_accounts_parallel(&accounts, wallet_address).await?;
@@ -723,7 +718,6 @@ impl OptimizedWalletScanner {
 
     /// Cache scan result
     /// Cache scan result
-    #[allow(dead_code)]
     async fn cache_scan_result(&self, wallet_address: &str, _wallet_info: &WalletInfo) -> Result<()> {
         let cache_key = format!("wallet_scan:{}", wallet_address);
         
@@ -754,7 +748,6 @@ impl OptimizedWalletScanner {
 
     /// Start background tasks (original implementation)
     /// Start background tasks (original implementation)
-    #[allow(dead_code)]
     fn start_background_tasks_original(&self) {
         // Start connection pool health checks
         let pool = self.connection_pool.clone();

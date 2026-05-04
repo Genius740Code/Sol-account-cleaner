@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
                     info!("  Fee waived: {}", fee_calculation.fee_waived);
                 }
                 
-                if let Some(error) = scan_result.error {
+                if let Some(error) = scan_result.error_message {
                     error!("Scan error: {}", error);
                 }
             }

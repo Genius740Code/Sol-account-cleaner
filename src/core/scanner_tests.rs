@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::core::{SolanaRecoverError, WalletScanner, TokenAccountInfo, LAMPORTS_PER_SOL, ScanStatus};
-    use crate::rpc::ConnectionPoolTrait;
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
     use std::str::FromStr;

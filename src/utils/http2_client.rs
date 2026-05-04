@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{RwLock, Semaphore};
 use axum::http::{Method, Uri};
 // use tower_http::limit::ConcurrencyLimitLayer; // Feature not enabled
@@ -8,19 +8,10 @@ use std::collections::HashMap;
 /// HTTP/2 enabled client with multiplexing and optimization
 #[derive(Debug, Clone)]
 pub struct Http2Client {
-    /// Connection pool for multiplexing
-    #[allow(dead_code)]
-    connection_pool: Arc<RwLock<ConnectionPool>>,
-    /// Request multiplexer
-    #[allow(dead_code)]
-    multiplexer: Arc<RequestMultiplexer>,
     /// Performance metrics
     metrics: Arc<RwLock<Http2Metrics>>,
     /// Configuration
     config: Arc<Http2Config>,
-    /// HTTP client
-    #[allow(dead_code)]
-    client: reqwest::Client,
 }
 
 /// HTTP/2 client configuration
@@ -59,62 +50,6 @@ impl Default for Http2Config {
     }
 }
 
-/// Connection pool for HTTP/2 multiplexing
-#[derive(Debug)]
-pub struct ConnectionPool {
-    #[allow(dead_code)]
-    connections: HashMap<String, Arc<Http2Connection>>,
-    #[allow(dead_code)]
-    max_connections_per_host: usize,
-    #[allow(dead_code)]
-    connection_counter: usize,
-}
-
-/// Individual HTTP/2 connection with multiplexing support
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct Http2Connection {
-    host: String,
-    created_at: Instant,
-    last_used: Arc<RwLock<Instant>>,
-    active_streams: Arc<RwLock<u32>>,
-    total_streams: u64,
-    is_healthy: Arc<RwLock<bool>>,
-}
-
-/// Request multiplexer for efficient stream management
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct RequestMultiplexer {
-    pending_requests: Arc<RwLock<Vec<PendingRequest>>>,
-    active_streams: Arc<RwLock<HashMap<u32, ActiveStream>>>,
-    stream_semaphore: Arc<Semaphore>,
-    next_stream_id: Arc<RwLock<u32>>,
-}
-
-/// Pending request waiting for stream allocation
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct PendingRequest {
-    id: String,
-    method: Method,
-    uri: Uri,
-    body: Option<Vec<u8>>,
-    headers: HashMap<String, String>,
-    priority: u8,
-    created_at: Instant,
-}
-
-/// Active HTTP/2 stream
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct ActiveStream {
-    id: u32,
-    request_id: String,
-    started_at: Instant,
-    bytes_sent: u64,
-    bytes_received: u64,
-}
 
 /// HTTP/2 performance metrics
 #[derive(Debug, Default, Clone)]
@@ -150,18 +85,9 @@ pub struct Http2Response {
 impl Http2Client {
     /// Create new HTTP/2 client with optimized configuration
     pub fn new(config: Http2Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Create HTTP/2 client with connection pooling and multiplexing
-        let client = reqwest::Client::builder()
-            .http2_prior_knowledge()
-            .timeout(config.connection_timeout)
-            .build()?;
-
         Ok(Self {
-            connection_pool: Arc::new(RwLock::new(ConnectionPool::new(config.max_connections_per_host as u32))),
             config: Arc::new(config.clone()),
             metrics: Arc::new(RwLock::new(Http2Metrics::default())),
-            multiplexer: Arc::new(RequestMultiplexer::new(config.max_concurrent_streams)),
-            client,
         })
     }
 
@@ -226,75 +152,8 @@ impl Http2Client {
         *metrics = Http2Metrics::default();
     }
 
-    /// Get or create connection for host
-    #[allow(dead_code)]
-    async fn get_or_create_connection(&self, host: &str) -> Result<Arc<Http2Connection>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut pool = self.connection_pool.write().await;
-        
-        // Check for existing healthy connection
-        if let Some(connection) = pool.connections.get(host) {
-            let is_healthy = *connection.is_healthy.read().await;
-            if is_healthy && *connection.active_streams.read().await < self.config.max_concurrent_streams {
-                *connection.last_used.write().await = Instant::now();
-                return Ok(connection.clone());
-            }
-        }
-
-        // Create new connection if needed
-        if pool.connections.len() >= pool.max_connections_per_host {
-            // Remove oldest connection
-            if let Some(oldest_key) = pool.connections.keys().next().cloned() {
-                pool.connections.remove(&oldest_key);
-            }
-        }
-
-        let connection = Arc::new(Http2Connection::new(host.to_string()));
-        pool.connections.insert(host.to_string(), connection.clone());
-        pool.connection_counter += 1;
-
-        Ok(connection)
-    }
-
-    /// Extract host from URI
-    #[allow(dead_code)]
-    fn extract_host(&self, uri: &Uri) -> String {
-        uri.host().unwrap_or("localhost").to_string()
-    }
 }
 
-impl ConnectionPool {
-    fn new(max_connections: u32) -> Self {
-        Self {
-            connections: HashMap::new(),
-            max_connections_per_host: (max_connections / 4) as usize, // Distribute across hosts
-            connection_counter: 0,
-        }
-    }
-}
-
-impl Http2Connection {
-    fn new(host: String) -> Self {
-        Self {
-            host,
-            created_at: Instant::now(),
-            last_used: Arc::new(RwLock::new(Instant::now())),
-            active_streams: Arc::new(RwLock::new(0)),
-            total_streams: 0,
-            is_healthy: Arc::new(RwLock::new(true)),
-        }
-    }
-}
-
-impl RequestMultiplexer {
-    fn new(max_concurrent_streams: u32) -> Self {
-        Self {
-            pending_requests: Arc::new(RwLock::new(Vec::new())),
-            active_streams: Arc::new(RwLock::new(HashMap::new())),
-            stream_semaphore: Arc::new(Semaphore::new(max_concurrent_streams as usize)),
-            next_stream_id: Arc::new(RwLock::new(1)),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -314,10 +173,4 @@ mod tests {
         assert_eq!(initial_metrics.total_requests, 0);
     }
 
-    #[tokio::test]
-    async fn test_connection_pool() {
-        let pool = ConnectionPool::new(100);
-        assert_eq!(pool.connections.len(), 0);
-        assert_eq!(pool.max_connections_per_host, 25);
-    }
 }

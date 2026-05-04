@@ -641,11 +641,12 @@ mod tests {
         };
         
         let handler = RetryHandler::new(config);
-        let attempt_count = std::sync::atomic::AtomicU32::new(0);
+        let attempt_count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         
         let result = handler.execute_with_retry(|| {
+            let attempt_count_clone = attempt_count.clone();
             Box::pin(async move {
-                let count = attempt_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                let count = attempt_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 if count < 3 {
                     Err::<&str, SolanaRecoverError>(SolanaRecoverError::NetworkError("temporary error".to_string()))
                 } else {

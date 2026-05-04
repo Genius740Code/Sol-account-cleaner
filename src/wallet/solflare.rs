@@ -1,18 +1,11 @@
-use crate::core::{Result, SolanaRecoverError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::RwLock;
 use uuid::Uuid;
-use base64::{Engine as _, engine::general_purpose};
 
 pub struct SolflareProvider {
-    #[allow(dead_code)]
     connections: Arc<RwLock<HashMap<String, SolflareSession>>>,
-    #[allow(dead_code)]
-    message_handlers: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<SolflareMessage>>>>,
-    #[allow(dead_code)]
-    config: SolflareConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -77,155 +70,10 @@ impl SolflareProvider {
         Self::with_config(SolflareConfig::default())
     }
 
-    pub fn with_config(config: SolflareConfig) -> Self {
+    pub fn with_config(_config: SolflareConfig) -> Self {
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
-            message_handlers: Arc::new(RwLock::new(HashMap::new())),
-            config,
         }
-    }
-
-    #[allow(dead_code)]
-    async fn send_solflare_request(&self, _session_id: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
-        let message = SolflareMessage {
-            id: Uuid::new_v4().to_string(),
-            method: method.to_string(),
-            params: params.clone(),
-            timestamp: chrono::Utc::now(),
-        };
-
-        // In a real implementation, this would communicate with the Solflare SDK
-        // For now, we'll simulate the communication
-        
-        match method {
-            "connect" => {
-                // Simulate Solflare connection response
-                let response = SolflareResponse {
-                    id: message.id,
-                    result: Some(serde_json::json!({
-                        "publicKey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-                        "connected": true,
-                        "walletType": "extension"
-                    })),
-                    error: None,
-                    timestamp: chrono::Utc::now(),
-                };
-                response.result.ok_or_else(|| {
-                    SolanaRecoverError::TransactionError("No response result".to_string())
-                })
-            }
-            "signTransaction" => {
-                // Simulate transaction signing
-                let transaction_base64 = params["transaction"]
-                    .as_str()
-                    .ok_or_else(|| SolanaRecoverError::TransactionFailed(
-                        "Missing transaction parameter".to_string()
-                    ))?;
-
-                // Decode base64 transaction (in real implementation)
-                let _transaction_bytes = general_purpose::STANDARD.decode(transaction_base64)
-                    .map_err(|e| SolanaRecoverError::TransactionFailed(
-                        format!("Failed to decode transaction: {}", e)
-                    ))?;
-
-                // Simulate signature creation
-                let simulated_signature = "3a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1";
-                
-                let response = SolflareResponse {
-                    id: message.id,
-                    result: Some(serde_json::json!({
-                        "signature": simulated_signature,
-                        "publicKey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-                    })),
-                    error: None,
-                    timestamp: chrono::Utc::now(),
-                };
-                response.result.ok_or_else(|| {
-                    SolanaRecoverError::TransactionError("No response result".to_string())
-                })
-            }
-            "disconnect" => {
-                let response = SolflareResponse {
-                    id: message.id,
-                    result: Some(serde_json::json!({
-                        "disconnected": true
-                    })),
-                    error: None,
-                    timestamp: chrono::Utc::now(),
-                };
-                response.result.ok_or_else(|| {
-                    SolanaRecoverError::TransactionError("No response result".to_string())
-                })
-            }
-            _ => Err(SolanaRecoverError::AuthenticationError(
-                format!("Unsupported Solflare method: {}", method)
-            ))
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn validate_solflare_available(&self) -> Result<(SolflareWalletType, String)> {
-        // In a real implementation, this would check for different Solflare clients
-        // 1. Browser extension (window.solflare)
-        // 2. Mobile app (deep linking)
-        // 3. Web wallet (iframe communication)
-        
-        // Simulate detection order: extension -> mobile -> web
-        if self.config.enable_web_support {
-            // Check for browser extension
-            let extension_available = true; // In real: !window.solflare.isUndefined
-            
-            if extension_available {
-                return Ok((SolflareWalletType::Extension, "browser-extension".to_string()));
-            }
-        }
-        
-        if self.config.enable_mobile_support {
-            // Check for mobile app
-            let mobile_available = true; // In real: check deep linking support
-            if mobile_available {
-                return Ok((SolflareWalletType::Mobile, "mobile-app".to_string()));
-            }
-        }
-        
-        if self.config.enable_web_support {
-            // Fallback to web wallet
-            return Ok((SolflareWalletType::Web, "web-wallet".to_string()));
-        }
-
-        Err(SolanaRecoverError::AuthenticationError(
-            "Solflare wallet not detected. Please install Solflare extension or mobile app.".to_string()
-        ))
-    }
-
-    #[allow(dead_code)]
-    async fn request_permissions(&self, wallet_type: &SolflareWalletType) -> Result<()> {
-        // In a real implementation, this would trigger the appropriate permission request
-        match wallet_type {
-            SolflareWalletType::Extension => {
-                // Trigger extension popup
-                Ok(())
-            }
-            SolflareWalletType::Mobile => {
-                // Trigger mobile deep link
-                Ok(())
-            }
-            SolflareWalletType::Web => {
-                // Open web wallet iframe
-                Ok(())
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn create_deep_link(&self, public_key: &str) -> Result<String> {
-        // Create Solflare mobile deep link
-        Ok(format!(
-            "solflare://connect?publicKey={}&dapp={}&callback={}",
-            public_key,
-            urlencoding::encode("solana-recover"),
-            urlencoding::encode("http://localhost:8080/solflare-callback")
-        ))
     }
 }
 

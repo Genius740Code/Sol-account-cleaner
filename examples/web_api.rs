@@ -5,17 +5,17 @@
 
 use axum::{
     extract::Query,
-    http::StatusCode,
     response::Json,
     routing::{get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use solana_recover::{scan_wallet, BatchProcessor, BatchScanRequest};
-use std::collections::HashMap;
+use solana_recover::{scan_wallet, BatchProcessor, BatchScanRequest, WalletScanner, RpcEndpoint};
+use solana_recover::{rpc::ConnectionPool, config::Config};
 use std::net::SocketAddr;
-use tokio::time::{Duration, Instant};
+use std::sync::Arc;
+use tokio::time::Instant;
 
 #[derive(Debug, Deserialize)]
 struct ScanQuery {
@@ -74,13 +74,41 @@ struct HealthStatus {
 #[derive(Clone)]
 struct AppState {
     start_time: Instant,
-    batch_processor: BatchProcessor,
+    batch_processor: Arc<BatchProcessor>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load configuration and create components
+    let config = Config::load().unwrap_or_else(|_| Config::default());
+    
+    // Create RPC endpoints
+    let rpc_endpoints: Vec<RpcEndpoint> = config.rpc.endpoints
+        .iter()
+        .enumerate()
+        .map(|(i, url)| RpcEndpoint {
+            url: url.clone(),
+            priority: i as u8,
+            rate_limit_rps: config.rpc.rate_limit_rps,
+            timeout_ms: config.rpc.timeout_ms,
+            healthy: true,
+        })
+        .collect();
+    
+    // Create connection pool and scanner
+    let connection_pool = Arc::new(ConnectionPool::new(rpc_endpoints, config.rpc.pool_size));
+    let scanner = Arc::new(WalletScanner::new(connection_pool));
+    
     // Initialize batch processor
-    let batch_processor = BatchProcessor::new().await?;
+    let batch_processor = {
+        let processor = BatchProcessor::new(
+            scanner,
+            None, // No cache
+            None, // No persistence
+            config.scanner.into(),
+        )?;
+        Arc::new(processor)
+    };
     
     let state = AppState {
         start_time: Instant::now(),
@@ -109,9 +137,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  GET  /stats      - Server statistics");
     println!();
     
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
     
     Ok(())
 }
@@ -149,14 +176,12 @@ async fn scan_wallet_get(
     match scan_wallet(&params.address, rpc_endpoint).await {
         Ok(result) => {
             Json(ApiResponse::success(json!({
-                "wallet_address": result.wallet_address,
+                "wallet_address": result.address,
                 "total_accounts": result.total_accounts,
-                "empty_accounts": result.empty_accounts.len(),
+                "empty_accounts": result.empty_accounts,
                 "recoverable_sol": result.recoverable_sol,
                 "scan_time_ms": result.scan_time_ms,
-                "empty_account_addresses": result.empty_accounts.iter()
-                    .map(|acc| &acc.address)
-                    .collect::<Vec<_>>()
+                "empty_account_addresses": result.empty_account_addresses
             })))
         }
         Err(e) => {
@@ -179,14 +204,12 @@ async fn scan_wallet_handler(
     match scan_wallet(wallet_address, rpc_endpoint).await {
         Ok(result) => {
             Json(ApiResponse::success(json!({
-                "wallet_address": result.wallet_address,
+                "wallet_address": result.address,
                 "total_accounts": result.total_accounts,
-                "empty_accounts": result.empty_accounts.len(),
+                "empty_accounts": result.empty_accounts,
                 "recoverable_sol": result.recoverable_sol,
                 "scan_time_ms": result.scan_time_ms,
-                "empty_account_addresses": result.empty_accounts.iter()
-                    .map(|acc| &acc.address)
-                    .collect::<Vec<_>>()
+                "empty_account_addresses": result.empty_account_addresses
             })))
         }
         Err(e) => {
@@ -208,14 +231,17 @@ async fn batch_scan_handler(
     }
     
     let request = BatchScanRequest {
+        id: uuid::Uuid::new_v4(),
         wallet_addresses: payload.wallets,
+        user_id: Some("web_api_user".to_string()),
         fee_percentage: payload.fee_percentage,
+        created_at: chrono::Utc::now(),
     };
     
-    match state.batch_processor.process_batch(request).await {
+    match state.batch_processor.process_batch(&request).await {
         Ok(results) => {
-            let successful = results.results.iter().filter(|r| r.result.is_ok()).count();
-            let failed = results.results.iter().filter(|r| r.result.is_err()).count();
+            let successful = results.results.iter().filter(|r| r.result.is_some()).count();
+            let failed = results.results.iter().filter(|r| r.result.is_none()).count();
             
             Json(ApiResponse::success(json!({
                 "total_wallets": results.results.len(),
@@ -223,18 +249,18 @@ async fn batch_scan_handler(
                 "failed": failed,
                 "results": results.results.into_iter().map(|r| {
                     match r.result {
-                        Ok(scan_result) => json!({
+                        Some(scan_result) => json!({
                             "wallet_address": r.wallet_address,
                             "success": true,
                             "total_accounts": scan_result.total_accounts,
-                            "empty_accounts": scan_result.empty_accounts.len(),
+                            "empty_accounts": scan_result.empty_accounts,
                             "recoverable_sol": scan_result.recoverable_sol,
                             "scan_time_ms": scan_result.scan_time_ms
                         }),
-                        Err(e) => json!({
+                        None => json!({
                             "wallet_address": r.wallet_address,
                             "success": false,
-                            "error": e.to_string()
+                            "error": r.error_message.as_deref().unwrap_or("Unknown error")
                         })
                     }
                 }).collect::<Vec<_>>()
@@ -257,7 +283,6 @@ async fn stats_handler(
         "version": env!("CARGO_PKG_VERSION"),
         "features": {
             "scanner": cfg!(feature = "scanner"),
-            "client": cfg!(feature = "client"),
             "api": cfg!(feature = "api"),
             "database": cfg!(feature = "database"),
             "cache": cfg!(feature = "cache"),
