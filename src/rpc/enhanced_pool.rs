@@ -17,7 +17,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 #[cfg(test)]
-mod enhanced_pool_tests;
+include!("enhanced_pool_tests.rs");
 
 /// Enhanced connection pool with multiple endpoints and health checks
 pub struct EnhancedConnectionPool {

@@ -540,7 +540,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_enhanced_scanner_creation() {
-        let connection_pool = Arc::new(MockConnectionPool::new());
+        let connection_pool = Arc::new(MockConnectionPool::new(vec!["https://api.mainnet-beta.solana.com".to_string()], 10).unwrap());
         let scanner = EnhancedWalletScanner::new(connection_pool).unwrap();
         
         let stats = scanner.get_scanner_stats();
@@ -550,7 +550,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_enhanced_wallet_scan() {
-        let connection_pool = Arc::new(MockConnectionPool::new());
+        let connection_pool = Arc::new(MockConnectionPool::new(vec!["https://api.mainnet-beta.solana.com".to_string()], 10).unwrap());
         let scanner = EnhancedWalletScanner::new(connection_pool).unwrap();
         
         let result = scanner.scan_wallet_enhanced("11111111111111111111111111111112").await;
@@ -563,7 +563,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_batch_size_optimization() {
-        let connection_pool = Arc::new(MockConnectionPool::new());
+        let connection_pool = Arc::new(MockConnectionPool::new(vec!["https://api.mainnet-beta.solana.com".to_string()], 10).unwrap());
         let scanner = EnhancedWalletScanner::new(connection_pool).unwrap();
         
         let request = BatchScanRequest {
@@ -581,7 +581,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_comprehensive_report() {
-        let connection_pool = Arc::new(MockConnectionPool::new());
+        let connection_pool = Arc::new(MockConnectionPool::new(vec!["https://api.mainnet-beta.solana.com".to_string()], 10).unwrap());
         let scanner = EnhancedWalletScanner::new(connection_pool).unwrap();
         
         let report = scanner.get_comprehensive_report().await;

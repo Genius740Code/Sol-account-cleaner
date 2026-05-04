@@ -138,7 +138,7 @@ impl CircuitBreaker {
                     state_guard.last_state_change = Utc::now();
                     debug!("Circuit breaker '{}' transitioning to half-open", self.name);
                 } else {
-                    return Err(self.create_circuit_breaker_error("Circuit breaker is open"));
+                    return self.create_circuit_breaker_error("Circuit breaker is open");
                 }
             }
             CircuitBreakerState::HalfOpen => {
@@ -207,10 +207,9 @@ impl CircuitBreaker {
         }
     }
     
-    fn create_circuit_breaker_error<T>(&self, message: &str) -> T {
-        // This would need to be adapted based on your error type
-        // For now, we'll create a generic error
-        panic!("Circuit breaker error: {}", message);
+    fn create_circuit_breaker_error<T>(&self, message: &str) -> Result<T, SolanaRecoverError> {
+        // Create a proper circuit breaker error
+        Err(SolanaRecoverError::CircuitBreakerOpen(message.to_string()))
     }
     
     pub async fn get_state(&self) -> CircuitBreakerState {
@@ -642,12 +641,12 @@ mod tests {
         };
         
         let handler = RetryHandler::new(config);
-        let mut attempt_count = 0;
+        let attempt_count = std::sync::atomic::AtomicU32::new(0);
         
         let result = handler.execute_with_retry(|| {
             Box::pin(async move {
-                attempt_count += 1;
-                if attempt_count < 3 {
+                let count = attempt_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if count < 3 {
                     Err::<&str, SolanaRecoverError>(SolanaRecoverError::NetworkError("temporary error".to_string()))
                 } else {
                     Ok("success")
@@ -657,7 +656,7 @@ mod tests {
         
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
-        assert_eq!(attempt_count, 3);
+        assert_eq!(attempt_count.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
     
     #[tokio::test]

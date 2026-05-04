@@ -10,7 +10,6 @@ use crate::nft::portfolio::PortfolioAnalyzer;
 use crate::nft::types::*;
 use crate::nft::valuation::ValuationEngine;
 use futures::StreamExt;
-use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;

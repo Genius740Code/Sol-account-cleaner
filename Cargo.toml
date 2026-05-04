@@ -1,6 +1,6 @@
 [package]
 name = "solana-recover"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 description = "A comprehensive Solana wallet recovery and account management tool"
 license = "MIT"
@@ -88,6 +88,7 @@ regex              = "1.10"
 
 # Additional dependencies
 tower-http        = { version = "0.5", features = ["cors", "compression-gzip", "trace"] }
+ring              = { version = "0.17", features = ["std"] }
 metrics            = "0.21"
 metrics-exporter-prometheus = "0.12"
 governor           = "0.6"
@@ -109,3 +110,6 @@ webp               = "0.2"
 kamadak-exif       = "0.5"
 mime               = "0.3"
 mime_guess         = "2.0"
+
+[dev-dependencies]
+tempfile            = "3.8"

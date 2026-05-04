@@ -1,8 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::core::types::*;
+    use crate::wallet::WalletType;
+    use crate::wallet::private_key::SecretKey;
     use crate::rpc::ConnectionPool;
-    use crate::wallet::{WalletManager, WalletCredentials, WalletCredentialData};
+    use crate::wallet::{WalletManager, WalletCredentials, WalletCredentialData, PrivateKeyProvider};
+    use crate::core::{RecoveryManager, RecoverySecurity};
+    use crate::wallet::manager::WalletProvider;
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
     use std::str::FromStr;
@@ -55,8 +59,8 @@ mod tests {
     async fn test_parse_private_key_hex() {
         let provider = PrivateKeyProvider::new();
         
-        // Test hex format
-        let hex_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        // Test invalid hex format (odd number of characters)
+        let hex_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde";
         let result = provider.parse_private_key(hex_key);
         
         // Should fail with invalid key
@@ -239,7 +243,7 @@ mod tests {
         };
 
         let timestamp = chrono::Utc::now();
-        let signature = recovery_manager.generate_audit_signature(&request, timestamp);
+        let signature = recovery_manager.generate_audit_signature(&request, timestamp).unwrap();
         
         // Should generate a hex string
         assert!(!signature.is_empty());
@@ -276,11 +280,11 @@ mod tests {
     fn test_recovery_security_new() {
         let security = RecoverySecurity::new();
         
-        assert_eq!(security.max_recovery_lamports, 100_000_000_000);
-        assert!(security.allowed_destinations.is_empty());
-        assert!(!security.require_multi_sig);
-        assert_eq!(security.session_timeout_secs, 3600);
-        assert!(!security.audit_key.is_empty());
+        assert_eq!(security.max_recovery_lamports(), 100_000_000_000);
+        assert!(security.allowed_destinations().is_empty());
+        assert!(!security.requires_multi_sig());
+        assert_eq!(security.session_timeout_secs(), 3600);
+        assert!(!security.audit_key().is_empty());
     }
 
     #[test]
@@ -295,9 +299,9 @@ mod tests {
             allowed_destinations.clone(),
         );
         
-        assert_eq!(security.max_recovery_lamports, 50_000_000_000);
-        assert_eq!(security.allowed_destinations, allowed_destinations);
-        assert!(security.require_multi_sig);
+        assert_eq!(security.max_recovery_lamports(), 50_000_000_000);
+        assert_eq!(security.allowed_destinations(), &allowed_destinations[..]);
+        assert!(security.requires_multi_sig());
     }
 
     #[test]

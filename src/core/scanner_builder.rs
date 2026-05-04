@@ -236,7 +236,7 @@ mod tests {
     #[async_trait::async_trait]
     impl ConnectionPoolTrait for MockConnectionPool {
         async fn get_client(&self) -> crate::core::Result<Arc<crate::rpc::RpcClientWrapper>> {
-            Err(crate::core::Error::MockError("Mock connection pool".to_string()))
+            Err(crate::core::errors::SolanaRecoverError::RpcClientError("Mock connection pool".to_string()))
         }
     }
     

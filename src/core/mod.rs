@@ -42,7 +42,7 @@ pub use scanner::*;
 pub use error_handling::{RetryConfig, CircuitBreakerConfig, ErrorMetrics, CircuitBreakerState, CircuitBreaker, ErrorHandler, ErrorClassification, ErrorReporter, ErrorReport, ErrorSummary};
 // Import specific items from unified_scanner to avoid conflicts
 pub use unified_scanner::{PerformanceMode as UnifiedPerformanceMode, ScanStrategy, UnifiedScannerConfig, ScanContext, UnifiedWalletScanner};
-pub use scanner_builder::*;
+pub use scanner_builder::{ScannerBuilder, ScannerFactory, ScannerContainer};
 // Import specific items from error_recovery to avoid conflicts  
 pub use error_recovery::{CircuitState, CircuitBreakerConfig as RecoveryCircuitConfig, RetryPolicy, CircuitBreaker as RecoveryCircuitBreaker, RetryMechanism, ResilientScanner};
 pub use config_management::*;

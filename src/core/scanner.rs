@@ -28,7 +28,7 @@ pub struct OpenOrdersAccountInfo {
     pub quote_token_total: u64,
 }
 
-const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
+pub const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 
 #[derive(Clone)]
 pub struct WalletScanner {

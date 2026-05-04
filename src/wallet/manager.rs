@@ -30,7 +30,7 @@ pub enum WalletCredentialData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WalletInfo {
+pub struct WalletConnectionInfo {
     pub id: String,
     pub wallet_type: WalletType,
     pub public_key: String,
@@ -127,18 +127,18 @@ impl WalletManager {
         
         // Initialize Phantom provider (temporarily disabled for testing)
         if config.enable_phantom {
-            // providers.insert(WalletType::Phantom, Box::new(crate::wallet::phantom::PhantomProvider::new()));
+            providers.insert(WalletType::Phantom, Box::new(crate::wallet::phantom::PhantomProvider::new()));
         }
         
         // Initialize Solflare provider with custom config (temporarily disabled for testing)
         if config.enable_solflare {
-            // let solflare_config = crate::wallet::solflare::SolflareConfig {
-            //     timeout_ms: config.solflare_timeout_ms,
-            //     retry_attempts: config.solflare_retry_attempts,
-            //     enable_mobile_support: config.enable_solflare_mobile,
-            //     enable_web_support: config.enable_solflare_web,
-            // };
-            // providers.insert(WalletType::Solflare, Box::new(crate::wallet::solflare::SolflareProvider::with_config(solflare_config)));
+            let solflare_config = crate::wallet::solflare::SolflareConfig {
+                timeout_ms: config.solflare_timeout_ms,
+                retry_attempts: config.solflare_retry_attempts,
+                enable_mobile_support: config.enable_solflare_mobile,
+                enable_web_support: config.enable_solflare_web,
+            };
+            providers.insert(WalletType::Solflare, Box::new(crate::wallet::solflare::SolflareProvider::with_config(solflare_config)));
         }
         
         // Initialize PrivateKey provider with enhanced components
@@ -215,14 +215,14 @@ impl WalletManager {
         self.providers.keys().cloned().collect()
     }
 
-    pub async fn get_wallet_info(&self, connection_id: &str) -> Option<WalletInfo> {
+    pub async fn get_wallet_info(&self, connection_id: &str) -> Option<WalletConnectionInfo> {
         if let Some(connection) = self.get_connection(connection_id) {
             let public_key = match self.providers.get(&connection.wallet_type) {
                 Some(provider) => provider.get_public_key(&connection).await.ok(),
                 None => None,
             };
 
-            public_key.map(|pk| WalletInfo {
+            public_key.map(|pk| WalletConnectionInfo {
                 id: connection.id.clone(),
                 wallet_type: connection.wallet_type,
                 public_key: pk,

@@ -8,7 +8,7 @@ pub mod transaction_validator;
 pub mod nonce_manager;
 pub mod audit_logger;
 
-pub use manager::{WalletManager, WalletManagerConfig, WalletCredentials, WalletInfo, WalletConnection, WalletProvider, ConnectionData, WalletType, WalletCredentialData};
+pub use manager::{WalletManager, WalletManagerConfig, WalletCredentials, WalletConnectionInfo, WalletConnection, WalletProvider, ConnectionData, WalletType, WalletCredentialData};
 pub use private_key::PrivateKeyProvider;
 pub use phantom::PhantomProvider;
 pub use solflare::{SolflareProvider, SolflareConfig};
@@ -18,5 +18,3 @@ pub use nonce_manager::{NonceManager, NonceInfo, ReplayProtectionConfig, NonceMe
 pub use audit_logger::{AuditLogger, AuditEvent, SecurityMetrics, RiskLevel, SecurityContext};
 
 
-#[cfg(test)]
-mod tests;

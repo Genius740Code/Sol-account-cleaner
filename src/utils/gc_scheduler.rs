@@ -747,11 +747,11 @@ impl GcScheduler {
         }
         
         serde_json::json!({
-            "timestamp": Utc::now(),
+            "timestamp": Utc::now().to_rfc3339(),
             "config": format!("{:?}", self.config),
-            "stats": stats,
-            "adaptive_parameters": self.adaptive_engine.get_current_parameters(),
-            "recent_performance": self.get_recent_performance(10),
+            "stats": serde_json::to_value(&stats).unwrap_or_default(),
+            "adaptive_parameters": serde_json::to_value(self.adaptive_engine.get_current_parameters()).unwrap_or_default(),
+            "recent_performance": serde_json::to_value(self.get_recent_performance(10)).unwrap_or_default(),
             "recommendations": self.generate_gc_recommendations(&stats),
         })
     }

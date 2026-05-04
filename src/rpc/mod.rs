@@ -10,6 +10,7 @@ pub mod pool;
 pub mod client;
 pub mod enhanced_pool;
 pub mod batch_client;
+pub mod mock;
 
 #[cfg(test)]
 mod client_tests;

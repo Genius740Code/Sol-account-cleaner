@@ -70,8 +70,6 @@ impl ProgramIds {
         // Known good program IDs for mainnet
         const KNOWN_OPENBOOK_V2: &str = "opnb2vDkSQsqmY24zQ4DDEZf1V3oEisPZ5bEErLNRsA";
         const KNOWN_SERUM_DEX: &str = "srmqPvvk92GzrcCbKgSGx3mFHTEQuoE3jUuAM6gEKrP";
-        const KNOWN_TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-        const KNOWN_TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBwCXr2MCTc";
         
         // Validate OpenBook V2
         if self.openbook_v2.to_string() != KNOWN_OPENBOOK_V2 {
@@ -89,19 +87,19 @@ impl ProgramIds {
             ));
         }
         
-        // Validate Token program
-        if self.token_program.to_string() != KNOWN_TOKEN_PROGRAM {
+        // Validate Token program (use dynamic function)
+        if self.token_program != spl_token::id() {
             return Err(SolanaRecoverError::SecurityError(
                 format!("Token program ID mismatch. Expected: {}, Got: {}", 
-                    KNOWN_TOKEN_PROGRAM, self.token_program)
+                    spl_token::id(), self.token_program)
             ));
         }
         
-        // Validate Token-2022 program
-        if self.token_2022_program.to_string() != KNOWN_TOKEN_2022_PROGRAM {
+        // Validate Token-2022 program (use dynamic function)
+        if self.token_2022_program != spl_token_2022::id() {
             return Err(SolanaRecoverError::SecurityError(
                 format!("Token-2022 program ID mismatch. Expected: {}, Got: {}", 
-                    KNOWN_TOKEN_2022_PROGRAM, self.token_2022_program)
+                    spl_token_2022::id(), self.token_2022_program)
             ));
         }
         

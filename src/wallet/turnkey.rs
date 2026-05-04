@@ -226,11 +226,11 @@ impl TurnkeyProvider {
     }
 
     /// Get wallet info without creating a connection
-    pub async fn get_wallet_info(&self, credentials: &WalletCredentials) -> Result<crate::wallet::WalletInfo> {
+    pub async fn get_wallet_info(&self, credentials: &WalletCredentials) -> Result<crate::wallet::WalletConnectionInfo> {
         let connection = self.connect(credentials).await?;
         let public_key = self.get_public_key(&connection).await?;
         
-        Ok(crate::wallet::WalletInfo {
+        Ok(crate::wallet::WalletConnectionInfo {
             id: connection.id.clone(),
             wallet_type: WalletType::Turnkey,
             public_key,
@@ -504,5 +504,3 @@ impl Default for TurnkeyProvider {
     }
 }
 
-#[cfg(test)]
-mod tests;

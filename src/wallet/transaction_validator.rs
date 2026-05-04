@@ -230,20 +230,28 @@ impl TransactionValidator {
     }
 
     async fn simulate_transaction(&self, tx: &Transaction, rpc_client: &solana_client::rpc_client::RpcClient) -> Result<SimulationResult> {
-        let simulation = rpc_client
-            .simulate_transaction_with_config(
-                tx,
-                RpcSimulateTransactionConfig {
-                    sig_verify: false,
-                    replace_recent_blockhash: true,
-                    commitment: Some(CommitmentConfig::processed()),
-                    encoding: None,
-                    accounts: None,
-                    min_context_slot: None,
-                    inner_instructions: Some(false).is_some(),
-                },
-            )
-            .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))?;
+        let simulation = tokio::task::spawn_blocking({
+            let tx = tx.clone();
+            move || {
+                let rpc_client = solana_client::rpc_client::RpcClient::new("https://api.devnet.solana.com");
+                rpc_client
+                    .simulate_transaction_with_config(
+                        &tx,
+                        RpcSimulateTransactionConfig {
+                            sig_verify: false,
+                            replace_recent_blockhash: true,
+                            commitment: Some(CommitmentConfig::processed()),
+                            encoding: None,
+                            accounts: None,
+                            min_context_slot: None,
+                            inner_instructions: Some(false).is_some(),
+                        },
+                    )
+                    .map_err(|e| SolanaRecoverError::RpcClientError(e.to_string()))
+            }
+        })
+        .await
+        .map_err(|e| SolanaRecoverError::TransactionError(format!("Blocking task failed: {}", e)))??;
 
         let mut account_changes = Vec::new();
         

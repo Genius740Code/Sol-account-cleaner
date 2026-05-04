@@ -622,7 +622,7 @@ impl MemoryMonitor {
             available_system_memory: 4 * 1024 * 1024 * 1024, // 4GB
             system_memory_usage_percent: 50.0,
             process_memory_usage: current_usage,
-            process_memory_usage_percent: (current_usage as f64 / (8 * 1024 * 1024 * 1024) as f64) * 100.0,
+            process_memory_usage_percent: (current_usage as f64 / (8.0 * 1024.0 * 1024.0 * 1024.0)) * 100.0,
         };
         
         Ok(MemoryStatistics {

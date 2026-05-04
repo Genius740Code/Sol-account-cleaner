@@ -202,7 +202,8 @@ mod tests {
 
     #[test]
     fn test_fee_calculation_minimum() {
-        let fee_structure = FeeStructure::default();
+        let mut fee_structure = FeeStructure::default();
+        fee_structure.waive_below_lamports = None; // Disable waiver to test minimum fee
         let recoverable = 1_000_000; // 0.001 SOL (very small)
 
         let calculation = FeeCalculator::calculate_fee(recoverable, &fee_structure);

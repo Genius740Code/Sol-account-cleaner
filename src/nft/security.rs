@@ -5,11 +5,14 @@
 
 use crate::nft::cache::{CacheManager, CacheKey};
 use crate::nft::errors::{NftError, NftResult, RiskLevel};
+use crate::nft::portfolio::Priority;
 use crate::nft::types::*;
 use crate::rpc::ConnectionPool;
 use async_trait::async_trait;
+use futures::StreamExt;
 use dashmap::DashMap;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -238,9 +241,6 @@ pub enum RecommendationType {
     AdditionalValidation,
     Report,
 }
-
-/// Priority levels (reused from portfolio module)
-pub use crate::nft::portfolio::Priority;
 
 /// Security rules engine
 #[derive(Clone)]

@@ -296,19 +296,18 @@ mod tests {
     #[tokio::test]
     async fn test_nonce_management() {
         let manager = NonceManager::new(ReplayProtectionConfig::default());
-        let account = Keypair::new().pubkey();
+        let keypair = Keypair::new();
         let nonce = Hash::new_unique();
 
         // Register nonce
-        assert!(manager.register_nonce(account, nonce).await.is_ok());
+        assert!(manager.register_nonce(keypair.pubkey(), nonce).await.is_ok());
 
         // Check nonce info
-        let info = manager.get_nonce_info(&account).await.unwrap();
+        let info = manager.get_nonce_info(&keypair.pubkey()).await.unwrap();
         assert!(info.is_some());
         assert_eq!(info.unwrap().nonce, nonce);
 
         // Test transaction validation
-        let keypair = Keypair::new();
         let message = Message::new(&[], Some(&keypair.pubkey()));
         let mut tx = Transaction::new_unsigned(message);
         tx.message.recent_blockhash = nonce;
@@ -327,16 +326,15 @@ mod tests {
         config.nonce_ttl_seconds = 1; // 1 second TTL for testing
         
         let manager = NonceManager::new(config);
-        let account = Keypair::new().pubkey();
+        let keypair = Keypair::new();
         let nonce = Hash::new_unique();
 
-        manager.register_nonce(account, nonce).await.unwrap();
+        manager.register_nonce(keypair.pubkey(), nonce).await.unwrap();
 
         // Wait for expiration
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         // Nonce should be expired
-        let keypair = Keypair::new();
         let message = Message::new(&[], Some(&keypair.pubkey()));
         let mut tx = Transaction::new_unsigned(message);
         tx.message.recent_blockhash = nonce;

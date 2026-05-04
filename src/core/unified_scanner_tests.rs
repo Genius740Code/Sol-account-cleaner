@@ -4,13 +4,14 @@ use crate::core::unified_scanner::*;
 use crate::core::scanner_builder::ScannerBuilder;
 use crate::core::error_recovery::*;
 use crate::core::config_management::*;
-use crate::utils::cache::{MemoryCache, SimpleMetrics, CacheTrait, MetricsTrait};
+use crate::utils::cache::{MemoryCache, SimpleMetrics};
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{ScannerFactory, ScannerContainer, SolanaRecoverError, BatchScanRequest, BatchScanResult, ScanResult, ScanStatus, RpcEndpoint};
 
     // Mock connection pool for testing
     struct MockConnectionPool;
@@ -245,15 +246,15 @@ mod tests {
     #[tokio::test]
     async fn test_retry_mechanism_exhausted() {
         let retry = RetryMechanism::with_default_policy();
-        let mut call_count = 0;
+        let call_count = std::sync::atomic::AtomicU32::new(0);
         
         let result: Result<String, SolanaRecoverError> = retry.execute(|| async {
-            call_count += 1;
+            call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(crate::core::SolanaRecoverError::TimeoutError("always fails".to_string()))
         }).await;
         
         assert!(result.is_err());
-        assert_eq!(call_count, 3); // max_attempts
+        assert_eq!(call_count.load(std::sync::atomic::Ordering::SeqCst), 3); // max_attempts
     }
 
     #[test]

@@ -2,6 +2,7 @@
 mod tests {
     use super::*;
     use crate::core::{RpcEndpoint, Result, SolanaRecoverError};
+    use crate::rpc::{ConnectionPool, ConnectionPoolTrait};
 
     #[tokio::test]
     async fn test_connection_pool_creation() {

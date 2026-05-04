@@ -474,7 +474,7 @@ impl RecoveryManager {
         Ok((transaction_with_blockhash, wallet_pubkey))
     }
 
-    fn group_accounts_for_recovery(&self, accounts: &[String]) -> Result<Vec<Vec<String>>> {
+    pub fn group_accounts_for_recovery(&self, accounts: &[String]) -> Result<Vec<Vec<String>>> {
         if accounts.is_empty() {
             return Err(SolanaRecoverError::NoRecoverableFunds(
                 "No accounts provided for recovery".to_string()
@@ -591,7 +591,7 @@ impl RecoveryManager {
         Ok(())
     }
     
-    fn validate_destination_address(&self, address: &str) -> Result<Pubkey> {
+    pub fn validate_destination_address(&self, address: &str) -> Result<Pubkey> {
         let pubkey = address.parse::<Pubkey>()
             .map_err(|_| SolanaRecoverError::InvalidInput("Invalid destination address".to_string()))?;
         
@@ -744,7 +744,7 @@ impl RecoveryManager {
         ))
     }
     
-    async fn check_rate_limit(&self, wallet_address: &str) -> Result<bool> {
+    pub async fn check_rate_limit(&self, wallet_address: &str) -> Result<bool> {
         // Simple rate limiting check
         // In production, you'd use a more sophisticated rate limiter with Redis or similar
         let audit_log = self.security.audit_log.lock().await;
@@ -786,7 +786,7 @@ impl RecoveryManager {
         Ok(entry)
     }
 
-    fn generate_audit_signature(&self, request: &RecoveryRequest, timestamp: chrono::DateTime<chrono::Utc>) -> Result<String> {
+    pub fn generate_audit_signature(&self, request: &RecoveryRequest, timestamp: chrono::DateTime<chrono::Utc>) -> Result<String> {
         let data = format!(
             "{}|{}|{}|{}",
             request.wallet_address,
@@ -802,8 +802,7 @@ impl RecoveryManager {
         Ok(format!("{:x}", mac.finalize().into_bytes()))
     }
 
-    #[allow(dead_code)]
-    fn generate_nonce(&self) -> u64 {
+    pub fn generate_nonce(&self) -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -866,12 +865,24 @@ impl RecoverySecurity {
         self.audit_log.lock().await.clear();
     }
     
-    pub fn requires_multi_sig(&self) -> bool {
-        self.require_multi_sig
+    pub fn max_recovery_lamports(&self) -> u64 {
+        self.max_recovery_lamports
     }
     
-    pub fn session_timeout(&self) -> u64 {
+    pub fn allowed_destinations(&self) -> &[Pubkey] {
+        &self.allowed_destinations
+    }
+    
+    pub fn audit_key(&self) -> &str {
+        &self.audit_key
+    }
+    
+    pub fn session_timeout_secs(&self) -> u64 {
         self.session_timeout_secs
+    }
+    
+    pub fn requires_multi_sig(&self) -> bool {
+        self.require_multi_sig
     }
     
     pub fn set_multi_sig_requirement(&mut self, require: bool) {

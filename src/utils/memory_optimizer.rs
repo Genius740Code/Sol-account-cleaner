@@ -359,12 +359,12 @@ impl MemoryLeakDetector {
         }
     }
     
-    pub fn track_allocation(&self, id: String, size: usize) {
+    pub async fn track_allocation(&self, id: String, size: usize) {
         if !self.enabled {
             return;
         }
         
-        let mut allocations = self.allocations.blocking_write();
+        let mut allocations = self.allocations.write().await;
         allocations.insert(id, AllocationInfo {
             size,
             timestamp: Instant::now(),
@@ -372,12 +372,12 @@ impl MemoryLeakDetector {
         });
     }
     
-    pub fn track_deallocation(&self, id: &str) {
+    pub async fn track_deallocation(&self, id: &str) {
         if !self.enabled {
             return;
         }
         
-        let mut allocations = self.allocations.blocking_write();
+        let mut allocations = self.allocations.write().await;
         allocations.remove(id);
     }
     
@@ -573,14 +573,14 @@ mod tests {
     async fn test_leak_detector() {
         let detector = MemoryLeakDetector::new(true);
         
-        detector.track_allocation("test1".to_string(), 1024);
-        detector.track_allocation("test2".to_string(), 2048);
+        detector.track_allocation("test1".to_string(), 1024).await;
+        detector.track_allocation("test2".to_string(), 2048).await;
         
         let summary = detector.get_allocation_summary().await;
         assert_eq!(summary.total_allocations, 2);
         assert_eq!(summary.total_size_bytes, 3072);
         
-        detector.track_deallocation("test1");
+        detector.track_deallocation("test1").await;
         
         let summary = detector.get_allocation_summary().await;
         assert_eq!(summary.total_allocations, 1);

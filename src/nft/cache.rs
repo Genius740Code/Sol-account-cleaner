@@ -454,15 +454,15 @@ impl CacheManager {
         self.metrics.total_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Try L1 cache first
-        if let Some(entry) = self.l1_cache.get(key) {
+        if let Some(entry) = self.l1_cache.get(key).await {
             self.metrics.l1_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.update_access_stats(&entry).await;
             
             let access_time_us = start_time.elapsed().as_micros() as u64;
             self.metrics.avg_access_time_us.fetch_add(access_time_us, std::sync::atomic::Ordering::Relaxed);
             
-            match entry.data {
-                CacheEntryData::NftInfo(nft_info) => return Some(nft_info),
+            match &entry.data {
+                CacheEntryData::NftInfo(nft_info) => return Some(nft_info.clone()),
                 _ => warn!("Cache entry type mismatch for key {:?}", key),
             }
         }
@@ -478,8 +478,8 @@ impl CacheManager {
             let access_time_us = start_time.elapsed().as_micros() as u64;
             self.metrics.avg_access_time_us.fetch_add(access_time_us, std::sync::atomic::Ordering::Relaxed);
             
-            match entry.data {
-                CacheEntryData::NftInfo(nft_info) => return Some(nft_info),
+            match &entry.data {
+                CacheEntryData::NftInfo(nft_info) => return Some(nft_info.clone()),
                 _ => warn!("Cache entry type mismatch for key {:?}", key),
             }
         }
@@ -527,15 +527,15 @@ impl CacheManager {
         self.metrics.total_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Try L1 cache first
-        if let Some(entry) = self.l1_cache.get(key) {
+        if let Some(entry) = self.l1_cache.get(key).await {
             self.metrics.l1_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.update_access_stats(&entry).await;
             
             let access_time_us = start_time.elapsed().as_micros() as u64;
             self.metrics.avg_access_time_us.fetch_add(access_time_us, std::sync::atomic::Ordering::Relaxed);
             
-            match entry.data {
-                CacheEntryData::ValuationResult(result) => return Some(result),
+            match &entry.data {
+                CacheEntryData::ValuationResult(result) => return Some(result.clone()),
                 _ => warn!("Cache entry type mismatch for key {:?}", key),
             }
         }
@@ -551,8 +551,8 @@ impl CacheManager {
             let access_time_us = start_time.elapsed().as_micros() as u64;
             self.metrics.avg_access_time_us.fetch_add(access_time_us, std::sync::atomic::Ordering::Relaxed);
             
-            match entry.data {
-                CacheEntryData::ValuationResult(result) => return Some(result),
+            match &entry.data {
+                CacheEntryData::ValuationResult(result) => return Some(result.clone()),
                 _ => warn!("Cache entry type mismatch for key {:?}", key),
             }
         }
@@ -596,15 +596,15 @@ impl CacheManager {
         self.metrics.total_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Try L1 cache first
-        if let Some(entry) = self.l1_cache.get(key) {
+        if let Some(entry) = self.l1_cache.get(key).await {
             self.metrics.l1_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.update_access_stats(&entry).await;
             
             let access_time_us = start_time.elapsed().as_micros() as u64;
             self.metrics.avg_access_time_us.fetch_add(access_time_us, std::sync::atomic::Ordering::Relaxed);
             
-            match entry.data {
-                CacheEntryData::SecurityValidationResult(result) => return Some(result),
+            match &entry.data {
+                CacheEntryData::SecurityValidationResult(result) => return Some(result.clone()),
                 _ => warn!("Cache entry type mismatch for key {:?}", key),
             }
         }
@@ -620,8 +620,8 @@ impl CacheManager {
             let access_time_us = start_time.elapsed().as_micros() as u64;
             self.metrics.avg_access_time_us.fetch_add(access_time_us, std::sync::atomic::Ordering::Relaxed);
             
-            match entry.data {
-                CacheEntryData::SecurityValidationResult(result) => return Some(result),
+            match &entry.data {
+                CacheEntryData::SecurityValidationResult(result) => return Some(result.clone()),
                 _ => warn!("Cache entry type mismatch for key {:?}", key),
             }
         }
@@ -668,7 +668,7 @@ impl CacheManager {
 
     /// Clear all cache entries
     pub async fn clear(&self) {
-        self.l1_cache.invalidate_all().await;
+        self.l1_cache.invalidate_all();
         self.l2_cache.clear();
         self.metrics.cache_size.store(0, std::sync::atomic::Ordering::Relaxed);
         self.metrics.memory_usage_bytes.store(0, std::sync::atomic::Ordering::Relaxed);
@@ -707,7 +707,7 @@ impl CacheManager {
         entry.access_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         
         // Update priority score based on access patterns
-        let current_score = *entry.priority_score.read().await;
+        let _current_score = *entry.priority_score.read().await;
         let access_count = entry.access_count.load(std::sync::atomic::Ordering::Relaxed) as f64;
         let age_hours = (now - entry.created_at).num_hours() as f64;
         
