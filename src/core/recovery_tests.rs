@@ -6,8 +6,8 @@ mod tests {
     use crate::rpc::ConnectionPool;
     use crate::wallet::{WalletManager, WalletCredentials, WalletCredentialData, PrivateKeyProvider};
     use crate::core::RecoveryManager;
-    use std::str::FromStr;
     use uuid::Uuid;
+    use std::sync::Arc;
 
     fn create_test_recovery_config() -> RecoveryConfig {
         RecoveryConfig {

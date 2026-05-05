@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::rpc::{EnhancedConnectionPool, EnhancedPoolConfig, WeightedEndpoint, LoadBalanceStrategy};
+    use crate::rpc::{EnhancedPoolConfig, WeightedEndpoint, LoadBalanceStrategy};
     use crate::core::RpcEndpoint;
     use std::time::Duration;
 

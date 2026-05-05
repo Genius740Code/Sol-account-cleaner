@@ -12,12 +12,12 @@ use tracing::info;
 #[derive(Clone)]
 pub struct BatchProcessor {
     scanner: Arc<crate::core::scanner::WalletScanner>,
-    cache_manager: Option<Arc<crate::storage::CacheManager>>,
-    persistence_manager: Option<Arc<dyn crate::storage::PersistenceManager>>,
+    _cache_manager: Option<Arc<crate::storage::CacheManager>>,
+    _persistence_manager: Option<Arc<dyn crate::storage::PersistenceManager>>,
     max_concurrent_scans: usize,
-    batch_size: usize,
-    retry_attempts: u32,
-    retry_delay_ms: u64,
+    _batch_size: usize,
+    _retry_attempts: u32,
+    _retry_delay_ms: u64,
     intelligent_processor: Option<Arc<AdaptiveParallelProcessor>>,
     config: ProcessorConfig,
 }
@@ -74,12 +74,12 @@ impl BatchProcessor {
         
         Ok(Self {
             scanner,
-            cache_manager,
-            persistence_manager,
+            _cache_manager: cache_manager,
+            _persistence_manager: persistence_manager,
             max_concurrent_scans: config.max_concurrent_wallets,
-            batch_size: config.batch_size,
-            retry_attempts: config.retry_attempts,
-            retry_delay_ms: config.retry_delay_ms,
+            _batch_size: config.batch_size,
+            _retry_attempts: config.retry_attempts,
+            _retry_delay_ms: config.retry_delay_ms,
             intelligent_processor,
             config,
         })
@@ -90,12 +90,12 @@ impl BatchProcessor {
         let config = ProcessorConfig::default();
         Self {
             scanner,
-            cache_manager: None,
-            persistence_manager: None,
+            _cache_manager: None,
+            _persistence_manager: None,
             max_concurrent_scans,
-            batch_size: 100,
-            retry_attempts: 3,
-            retry_delay_ms: 1000,
+            _batch_size: 100,
+            _retry_attempts: 3,
+            _retry_delay_ms: 1000,
             intelligent_processor: None,
             config,
         }

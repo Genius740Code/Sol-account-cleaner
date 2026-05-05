@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use solana_recover::{
     WalletManager, WalletCredentials, WalletType, WalletCredentialData,
@@ -18,7 +19,6 @@ use solana_recover::{
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{info, warn, error};
-use uuid::Uuid;
 
 /// Application state containing shared services
 #[derive(Clone)]
@@ -331,7 +331,7 @@ async fn sign_transaction(
     // Get connection
     if let Some(connection) = state.wallet_manager.get_connection(&request.connection_id) {
         // Decode base64 transaction
-        let transaction = match base64::decode(&request.transaction) {
+        let transaction = match base64::engine::general_purpose::STANDARD.decode(&request.transaction) {
             Ok(tx) => tx,
             Err(e) => {
                 error!("Failed to decode transaction: {}", e);
@@ -351,8 +351,8 @@ async fn sign_transaction(
                     )));
                 }
 
-                let signature = base64::encode(&signed_transaction[..64]);
-                let signed_tx_base64 = base64::encode(&signed_transaction);
+                let signature = base64::engine::general_purpose::STANDARD.encode(&signed_transaction[..64]);
+                let signed_tx_base64 = base64::engine::general_purpose::STANDARD.encode(&signed_transaction);
 
                 let response = SignResponse {
                     signature,

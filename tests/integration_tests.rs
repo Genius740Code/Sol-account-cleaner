@@ -1,14 +1,9 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, error, debug};
+use tracing::info;
 use regex::Regex;
-use once_cell::sync::Lazy;
 
-use solana_recover::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
-use solana_recover::core::enhanced_scanner::EnhancedWalletScanner;
-use solana_recover::utils::memory_integration::MemoryIntegrationLayer;
-use solana_recover::utils::http2_client::Http2Client;
 use solana_recover::utils::hardware_encryption::HardwareEncryptionEngine;
 use solana_recover::utils::async_audit_logger::AsyncAuditLogger;
 
@@ -907,7 +902,7 @@ mod tests {
     #[tokio::test]
     async fn test_integration_suite_creation() {
         let config = IntegrationTestConfig::default();
-        let suite = IntegrationTestSuite::new(config);
+        let _suite = IntegrationTestSuite::new(config);
         // Test creation succeeds
     }
 

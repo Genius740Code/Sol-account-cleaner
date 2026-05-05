@@ -1,5 +1,4 @@
 use solana_recover::{RecoveryManager, RecoveryRequest, RecoveryConfig};
-use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::main]
@@ -8,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create recovery manager with default config
-    let recovery_config = RecoveryConfig::default();
+    let _recovery_config = RecoveryConfig::default();
     
     // Note: In a real implementation, you would provide actual connection pool and wallet manager
     // For this example, we'll use the default implementation

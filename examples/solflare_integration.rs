@@ -179,7 +179,7 @@ async fn demo_solflare_transaction_signing(wallet_manager: &Arc<WalletManager>) 
     for (tx_type, transaction) in transactions {
         info!("\n📄 Signing {} transaction", tx_type);
         
-        match wallet_manager.sign_with_wallet(&connection.id, &transaction).await {
+        match wallet_manager.sign_with_wallet(&connection.id, &transaction, None).await {
             Ok(signature) => {
                 info!("✅ Transaction signed successfully");
                 info!("   Transaction type: {}", tx_type);

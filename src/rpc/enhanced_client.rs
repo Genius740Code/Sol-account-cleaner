@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use moka::future::Cache;
 use base64::Engine;
-use std::str::FromStr;
 use tracing::{debug, info, warn, error};
 use serde::{Serialize, Deserialize};
 

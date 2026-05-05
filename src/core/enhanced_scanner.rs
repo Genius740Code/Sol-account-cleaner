@@ -4,10 +4,10 @@ use crate::rpc::{ConnectionPoolTrait};
 use crate::utils::memory_integration::{MemoryIntegrationLayer, ScannerMemoryManager};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
+use std::str::FromStr;
 use uuid::Uuid;
 use std::time::Instant;
 use chrono::Utc;
-use std::str::FromStr;
 use tracing::{info, debug, error};
 use serde::{Deserialize, Serialize};
 

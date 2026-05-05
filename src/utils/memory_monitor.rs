@@ -23,10 +23,10 @@ pub struct MemoryMonitor {
     alert_system: Arc<MemoryAlertSystem>,
     
     /// Performance metrics collector
-    metrics_collector: Arc<MetricsCollector>,
+    _metrics_collector: Arc<MetricsCollector>,
     
     /// Memory profiler for detailed analysis
-    profiler: Arc<MemoryProfiler>,
+    _profiler: Arc<MemoryProfiler>,
     
     /// Event broadcaster for real-time updates
     event_sender: broadcast::Sender<MemoryEvent>,
@@ -335,9 +335,9 @@ pub struct MonitoringState {
 /// Memory alert system for threshold monitoring
 #[derive(Debug)]
 pub struct MemoryAlertSystem {
-    config: AlertThresholds,
+    _config: AlertThresholds,
     active_alerts: Arc<RwLock<HashMap<String, MemoryAlert>>>,
-    alert_history: Arc<RwLock<VecDeque<MemoryAlert>>>,
+    _alert_history: Arc<RwLock<VecDeque<MemoryAlert>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -392,9 +392,9 @@ pub struct TimeSeriesPoint {
 /// Memory profiler for detailed analysis
 #[derive(Debug)]
 pub struct MemoryProfiler {
-    enabled: bool,
-    allocation_traces: Arc<RwLock<HashMap<String, AllocationTrace>>>,
-    stack_traces: Arc<RwLock<Vec<StackTrace>>>,
+    _enabled: bool,
+    _allocation_traces: Arc<RwLock<HashMap<String, AllocationTrace>>>,
+    _stack_traces: Arc<RwLock<Vec<StackTrace>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -481,8 +481,8 @@ impl MemoryMonitor {
             current_stats: Arc::new(RwLock::new(MemoryStatistics::default())),
             history: Arc::new(RwLock::new(VecDeque::with_capacity(config.max_history_size))),
             alert_system: Arc::new(MemoryAlertSystem::new(config.alert_thresholds.clone())),
-            metrics_collector: Arc::new(MetricsCollector::new(Duration::from_secs(300))), // 5 minute window
-            profiler: Arc::new(MemoryProfiler::new(config.enable_profiling)),
+            _metrics_collector: Arc::new(MetricsCollector::new(Duration::from_secs(300))), // 5 minute window
+            _profiler: Arc::new(MemoryProfiler::new(config.enable_profiling)),
             event_sender,
             state: Arc::new(RwLock::new(MonitoringState::default())),
         });
@@ -652,7 +652,7 @@ impl MemoryMonitor {
     /// Update performance metrics
     async fn update_metrics(&self) {
         let stats = self.current_stats.read().clone();
-        self.metrics_collector.update_metrics(&stats).await;
+        self._metrics_collector.update_metrics(&stats).await;
     }
     
     /// Check for alert conditions
@@ -713,7 +713,7 @@ impl MemoryMonitor {
     
     /// Get performance metrics
     pub fn get_performance_metrics(&self) -> PerformanceMetrics {
-        self.metrics_collector.get_metrics()
+        self._metrics_collector.get_metrics()
     }
     
     /// Get active alerts
@@ -834,9 +834,9 @@ impl MemoryMonitor {
 impl MemoryAlertSystem {
     fn new(config: AlertThresholds) -> Self {
         Self {
-            config,
+            _config: config,
             active_alerts: Arc::new(RwLock::new(HashMap::new())),
-            alert_history: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
+            _alert_history: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
         }
     }
     
@@ -999,9 +999,9 @@ impl MetricsCollector {
 impl MemoryProfiler {
     fn new(enabled: bool) -> Self {
         Self {
-            enabled,
-            allocation_traces: Arc::new(RwLock::new(HashMap::new())),
-            stack_traces: Arc::new(RwLock::new(Vec::new())),
+            _enabled: enabled,
+            _allocation_traces: Arc::new(RwLock::new(HashMap::new())),
+            _stack_traces: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }

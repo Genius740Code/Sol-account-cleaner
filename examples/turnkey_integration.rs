@@ -11,7 +11,6 @@ use solana_recover::*;
 use solana_recover::wallet::*;
 use solana_recover::wallet::turnkey::{TurnkeyProvider, TurnkeyConfig};
 use std::sync::Arc;
-use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

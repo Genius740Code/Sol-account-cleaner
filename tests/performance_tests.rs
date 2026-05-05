@@ -4,13 +4,6 @@ use tokio::sync::Semaphore;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use solana_recover::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
-use solana_recover::core::enhanced_scanner::EnhancedWalletScanner;
-use solana_recover::core::adaptive_parallel_processor::{AdaptiveParallelProcessor, ProcessorConfig as LegacyProcessorConfig};
-use solana_recover::utils::memory_integration::MemoryIntegrationLayer;
-use solana_recover::utils::http2_client::Http2Client;
-use solana_recover::utils::hardware_encryption::HardwareEncryptionEngine;
-use solana_recover::utils::async_audit_logger::AsyncAuditLogger;
 
 /// Comprehensive performance testing suite
 #[derive(Clone)]
@@ -192,7 +185,7 @@ pub struct PerformanceResultsCollector {
     errors: Arc<tokio::sync::Mutex<Vec<String>>>,
     memory_samples: Arc<tokio::sync::Mutex<Vec<f64>>>,
     cpu_samples: Arc<tokio::sync::Mutex<Vec<f64>>>,
-    start_time: Instant,
+    _start_time: Instant,
 }
 
 impl PerformanceTestSuite {
@@ -575,7 +568,7 @@ impl PerformanceResultsCollector {
             errors: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             memory_samples: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             cpu_samples: Arc::new(tokio::sync::Mutex::new(Vec::new())),
-            start_time: Instant::now(),
+            _start_time: Instant::now(),
         }
     }
 

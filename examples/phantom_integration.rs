@@ -3,7 +3,6 @@
 //! This example demonstrates how to integrate with Phantom wallet
 //! for browser-based Solana interactions.
 
-use solana_recover::*;
 use solana_recover::wallet::*;
 use solana_recover::utils::{LoggingConfig, Logger};
 use std::sync::Arc;
@@ -116,7 +115,7 @@ async fn demo_phantom_transaction_signing(wallet_manager: &Arc<WalletManager>) -
     for (tx_type, transaction) in transactions {
         info!("\n📄 Signing {} transaction", tx_type);
         
-        match wallet_manager.sign_with_wallet(&connection.id, &transaction).await {
+        match wallet_manager.sign_with_wallet(&connection.id, &transaction, None).await {
             Ok(signature) => {
                 info!("✅ Transaction signed successfully");
                 info!("   Signature length: {} bytes", signature.len());
@@ -215,7 +214,7 @@ async fn demo_phantom_error_handling(wallet_manager: &Arc<WalletManager>) -> std
     info!("🧪 Testing transaction signing with invalid connection...");
     let test_transaction = create_simple_transfer_transaction();
     
-    match wallet_manager.sign_with_wallet("invalid_connection_id", &test_transaction).await {
+    match wallet_manager.sign_with_wallet("invalid_connection_id", &test_transaction, None).await {
         Ok(_) => {
             warn!("   Unexpected success with invalid connection");
         }

@@ -6,10 +6,6 @@ use tokio::sync::Semaphore;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use solana_recover::core::{BatchScanRequest, BatchScanResult, ScanResult, WalletInfo, EmptyAccount};
-use solana_recover::core::enhanced_scanner::EnhancedWalletScanner;
-use solana_recover::core::adaptive_parallel_processor::{AdaptiveParallelProcessor, ProcessorConfig as LegacyProcessorConfig};
-use solana_recover::utils::memory_integration::MemoryIntegrationLayer;
 use solana_recover::utils::enhanced_metrics::{EnhancedMetricsCollector, EnhancedMetricsConfig};
 
 /// Comprehensive load testing suite

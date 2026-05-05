@@ -3,7 +3,9 @@
 //! This example shows how to use the WalletScanner with custom configuration
 //! for optimal performance and advanced features.
 
-use solana_recover::{WalletScanner, ScanConfig};
+use solana_recover::{WalletScanner, ScannerBuilder, UnifiedWalletScanner};
+use std::env;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -34,16 +36,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Timeout: {}s", timeout_seconds);
     println!();
     
-    // Create custom configuration
-    let config = ScanConfig {
-        rpc_endpoint: "https://api.mainnet-beta.solana.com".to_string(),
-        max_concurrent,
-        timeout_seconds,
-        enable_cache: true,
-    };
-    
+    // Create custom scanner using ScannerBuilder
     println!("Initializing scanner with custom configuration...");
-    let scanner = WalletScanner::with_config(config).await?;
+    let scanner = ScannerBuilder::new()
+        .with_endpoint("https://api.mainnet-beta.solana.com")
+        .with_max_concurrent(max_concurrent)
+        .with_timeout(Duration::from_secs(timeout_seconds))
+        .with_cache(true)
+        .build()
+        .await?;
     
     println!("✓ Scanner initialized successfully");
     println!();

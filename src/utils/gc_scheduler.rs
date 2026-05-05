@@ -165,17 +165,17 @@ pub enum GcGeneration {
 
 #[derive(Debug, Clone)]
 pub struct MemoryPressureMonitor {
-    gc_engine: Arc<AdaptiveGcEngine>,
-    thresholds: GcPriorityConfig,
+    _gc_engine: Arc<AdaptiveGcEngine>,
+    _thresholds: GcPriorityConfig,
     current_pressure: Arc<RwLock<f64>>,
     pressure_history: Arc<RwLock<VecDeque<(Instant, f64)>>>,
-    monitoring_interval: Duration,
+    _monitoring_interval: Duration,
 }
 
 #[derive(Debug)]
 pub struct AdaptiveGcEngine {
     /// Learning rate for adaptive adjustments
-    learning_rate: f64,
+    _learning_rate: f64,
     
     /// Performance history
     performance_history: Arc<RwLock<VecDeque<GcPerformance>>>,
@@ -802,11 +802,11 @@ pub struct GcSchedulerStats {
 impl MemoryPressureMonitor {
     fn new(thresholds: GcPriorityConfig) -> Self {
         Self {
-            gc_engine: Arc::new(AdaptiveGcEngine::new()),
+            _gc_engine: Arc::new(AdaptiveGcEngine::new()),
             current_pressure: Arc::new(RwLock::new(0.0)),
             pressure_history: Arc::new(RwLock::new(VecDeque::with_capacity(100))),
-            thresholds,
-            monitoring_interval: Duration::from_secs(5),
+            _thresholds: thresholds,
+            _monitoring_interval: Duration::from_secs(5),
         }
     }
     
@@ -833,7 +833,7 @@ impl MemoryPressureMonitor {
 impl AdaptiveGcEngine {
     fn new() -> Self {
         Self {
-            learning_rate: 0.1,
+            _learning_rate: 0.1,
             performance_history: Arc::new(RwLock::new(VecDeque::with_capacity(100))),
             adaptive_params: Arc::new(RwLock::new(AdaptiveParameters::default())),
         }

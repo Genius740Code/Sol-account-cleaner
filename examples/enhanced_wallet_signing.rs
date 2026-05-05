@@ -1,6 +1,6 @@
 use solana_recover::wallet::{
     WalletManager, WalletCredentials, 
-    PrivateKeyProvider, TransactionValidator, NonceManager, AuditLogger
+    TransactionValidator, NonceManager, AuditLogger
 };
 use solana_recover::wallet::manager::{WalletCredentialData, WalletType};
 use solana_recover::wallet::{RiskLevel, SecurityContext};
