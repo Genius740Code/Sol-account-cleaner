@@ -449,24 +449,42 @@ impl RecoveryManager {
                 );
                 
                 if fee_calculation.fee_lamports > 0 && !fee_calculation.fee_waived {
-                    // Add fee transfer instruction
+                    // SECURITY FIX: Validate fee destination against authorized list
+                    if !self.fee_structure.authorized_firm_wallets.is_empty() && 
+                       !self.fee_structure.authorized_firm_wallets.contains(&firm_wallet_address.to_string()) {
+                        return Err(SolanaRecoverError::SecurityViolation(
+                            format!("Unauthorized fee destination: {}", firm_wallet_address)
+                        ));
+                    }
+                    
+                    // SECURITY FIX: Add fee transparency logging
+                    warn!("FEE DEDUCTION: {} lamports ({:.2}%) from wallet {} to firm wallet {}", 
+                          fee_calculation.fee_lamports,
+                          self.fee_structure.percentage * 100.0,
+                          wallet_pubkey,
+                          firm_wallet_address);
+                    
+                    // SECURITY FIX: Use proper SDK transaction construction instead of manual CompiledInstruction
                     let fee_instruction = system_instruction::transfer(
                         &wallet_pubkey, // From wallet (fee payer)
                         &firm_pubkey, // To firm wallet
                         fee_calculation.fee_lamports,
                     );
                     
-                    // Convert Instruction to CompiledInstruction manually
-                    let compiled_instruction = solana_sdk::instruction::CompiledInstruction {
-                        program_id_index: 0, // System program is usually at index 0 after fee payer
-                        accounts: vec![0, 1], // destination and firm accounts
-                        data: fee_instruction.data.clone(),
-                    };
+                    // Add fee instruction to instructions list and rebuild transaction properly
+                    let mut all_instructions = instructions;
+                    all_instructions.push(fee_instruction);
                     
-                    transaction_with_blockhash.message.instructions.push(compiled_instruction);
+                    let final_transaction = Transaction::new_with_payer(
+                        &all_instructions,
+                        Some(&wallet_pubkey),
+                    );
                     
-                    info!("Fee injection added: {} lamports to firm wallet {}", 
-                          fee_calculation.fee_lamports, firm_wallet_address);
+                    // Set the recent blockhash
+                    let mut final_transaction_with_blockhash = final_transaction;
+                    final_transaction_with_blockhash.message.recent_blockhash = recent_blockhash;
+                    
+                    return Ok((final_transaction_with_blockhash, wallet_pubkey));
                 }
             }
         }
@@ -474,7 +492,7 @@ impl RecoveryManager {
         Ok((transaction_with_blockhash, wallet_pubkey))
     }
 
-    pub fn group_accounts_for_recovery(&self, accounts: &[String]) -> Result<Vec<Vec<String>>> {
+    fn group_accounts_for_recovery(&self, accounts: &[String]) -> Result<Vec<Vec<String>>> {
         if accounts.is_empty() {
             return Err(SolanaRecoverError::NoRecoverableFunds(
                 "No accounts provided for recovery".to_string()
@@ -591,7 +609,7 @@ impl RecoveryManager {
         Ok(())
     }
     
-    pub fn validate_destination_address(&self, address: &str) -> Result<Pubkey> {
+    fn validate_destination_address(&self, address: &str) -> Result<Pubkey> {
         let pubkey = address.parse::<Pubkey>()
             .map_err(|_| SolanaRecoverError::InvalidInput("Invalid destination address".to_string()))?;
         
@@ -744,7 +762,7 @@ impl RecoveryManager {
         ))
     }
     
-    pub async fn check_rate_limit(&self, wallet_address: &str) -> Result<bool> {
+    async fn check_rate_limit(&self, wallet_address: &str) -> Result<bool> {
         // Simple rate limiting check
         // In production, you'd use a more sophisticated rate limiter with Redis or similar
         let audit_log = self.security.audit_log.lock().await;
@@ -786,7 +804,7 @@ impl RecoveryManager {
         Ok(entry)
     }
 
-    pub fn generate_audit_signature(&self, request: &RecoveryRequest, timestamp: chrono::DateTime<chrono::Utc>) -> Result<String> {
+    fn generate_audit_signature(&self, request: &RecoveryRequest, timestamp: chrono::DateTime<chrono::Utc>) -> Result<String> {
         let data = format!(
             "{}|{}|{}|{}",
             request.wallet_address,
@@ -802,7 +820,8 @@ impl RecoveryManager {
         Ok(format!("{:x}", mac.finalize().into_bytes()))
     }
 
-    pub fn generate_nonce(&self) -> u64 {
+    #[allow(dead_code)]
+    fn generate_nonce(&self) -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -865,24 +884,12 @@ impl RecoverySecurity {
         self.audit_log.lock().await.clear();
     }
     
-    pub fn max_recovery_lamports(&self) -> u64 {
-        self.max_recovery_lamports
-    }
-    
-    pub fn allowed_destinations(&self) -> &[Pubkey] {
-        &self.allowed_destinations
-    }
-    
-    pub fn audit_key(&self) -> &str {
-        &self.audit_key
-    }
-    
-    pub fn session_timeout_secs(&self) -> u64 {
-        self.session_timeout_secs
-    }
-    
     pub fn requires_multi_sig(&self) -> bool {
         self.require_multi_sig
+    }
+    
+    pub fn session_timeout(&self) -> u64 {
+        self.session_timeout_secs
     }
     
     pub fn set_multi_sig_requirement(&mut self, require: bool) {

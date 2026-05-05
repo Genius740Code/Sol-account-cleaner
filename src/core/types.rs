@@ -89,6 +89,7 @@ pub struct FeeStructure {
     pub maximum_lamports: Option<u64>,
     pub waive_below_lamports: Option<u64>,
     pub firm_wallet_address: Option<String>,
+    pub authorized_firm_wallets: Vec<String>,
 }
 
 impl Default for FeeStructure {
@@ -99,6 +100,7 @@ impl Default for FeeStructure {
             maximum_lamports: None,
             waive_below_lamports: Some(10_000_000), // 0.01 SOL
             firm_wallet_address: None, // Must be configured
+            authorized_firm_wallets: Vec::new(), // Must be configured for security
         }
     }
 }

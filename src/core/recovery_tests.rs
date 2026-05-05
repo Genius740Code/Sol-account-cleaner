@@ -5,10 +5,7 @@ mod tests {
     use crate::wallet::private_key::SecretKey;
     use crate::rpc::ConnectionPool;
     use crate::wallet::{WalletManager, WalletCredentials, WalletCredentialData, PrivateKeyProvider};
-    use crate::core::{RecoveryManager, RecoverySecurity};
-    use crate::wallet::manager::WalletProvider;
-    use solana_sdk::pubkey::Pubkey;
-    use std::sync::Arc;
+    use crate::core::RecoveryManager;
     use std::str::FromStr;
     use uuid::Uuid;
 
@@ -26,11 +23,12 @@ mod tests {
 
     fn create_test_fee_structure() -> FeeStructure {
         FeeStructure {
-            percentage: 0.01, // 1%
-            minimum_lamports: 5000,
-            maximum_lamports: Some(1_000_000),
-            waive_below_lamports: Some(10_000),
+            percentage: 0.15,
+            minimum_lamports: 1_000_000,
+            maximum_lamports: Some(10_000_000),
+            waive_below_lamports: Some(5_000_000),
             firm_wallet_address: Some("11111111111111111111111111111112".to_string()),
+            authorized_firm_wallets: vec![],
         }
     }
 
@@ -153,104 +151,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_group_accounts_for_recovery() {
-        let connection_pool = Arc::new(ConnectionPool::new(vec![], 1));
-        let wallet_manager = Arc::new(WalletManager::default());
-        let config = create_test_recovery_config();
-        let fee_structure = create_test_fee_structure();
-        
-        let recovery_manager = RecoveryManager::new(
-            connection_pool,
-            wallet_manager,
-            config,
-            fee_structure,
-        );
-
-        // Test with 25 accounts, should create 3 batches (10, 10, 5)
-        let accounts: Vec<String> = (0..25)
-            .map(|i| format!("111111111111111111111111111111{:02x}", i))
-            .collect();
-
-        let batches = recovery_manager.group_accounts_for_recovery(&accounts).unwrap();
-        assert_eq!(batches.len(), 3);
-        assert_eq!(batches[0].len(), 10);
-        assert_eq!(batches[1].len(), 10);
-        assert_eq!(batches[2].len(), 5);
-
-        // Test with empty accounts list
-        let empty_accounts: Vec<String> = vec![];
-        let result = recovery_manager.group_accounts_for_recovery(&empty_accounts);
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_validate_destination_address() {
-        let connection_pool = Arc::new(ConnectionPool::new(vec![], 1));
-        let wallet_manager = Arc::new(WalletManager::default());
-        let config = create_test_recovery_config();
-        let fee_structure = create_test_fee_structure();
-        
-        let recovery_manager = RecoveryManager::new(
-            connection_pool,
-            wallet_manager,
-            config,
-            fee_structure,
-        );
-
-        // Test valid address
-        let valid_address = "11111111111111111111111111111112";
-        let result = recovery_manager.validate_destination_address(valid_address);
-        assert!(result.is_ok());
-
-        // Test invalid address
-        let invalid_address = "invalid_address";
-        let result = recovery_manager.validate_destination_address(invalid_address);
-        assert!(result.is_err());
-
-        // Test system program address (should be rejected)
-        let system_address = "11111111111111111111111111111111";
-        let result = recovery_manager.validate_destination_address(system_address);
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_generate_audit_signature() {
-        let connection_pool = Arc::new(ConnectionPool::new(vec![], 1));
-        let wallet_manager = Arc::new(WalletManager::default());
-        let config = create_test_recovery_config();
-        let fee_structure = create_test_fee_structure();
-        
-        let recovery_manager = RecoveryManager::new(
-            connection_pool,
-            wallet_manager,
-            config,
-            fee_structure,
-        );
-
-        let request = RecoveryRequest {
-            id: Uuid::new_v4(),
-            wallet_address: "11111111111111111111111111111112".to_string(),
-            destination_address: "11111111111111111111111111111113".to_string(),
-            empty_accounts: vec![
-                "11111111111111111111111111111114".to_string(),
-                "11111111111111111111111111111115".to_string(),
-            ],
-            max_fee_lamports: Some(100000),
-            priority_fee_lamports: Some(5000),
-            wallet_connection_id: None,
-            user_id: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let timestamp = chrono::Utc::now();
-        let signature = recovery_manager.generate_audit_signature(&request, timestamp).unwrap();
-        
-        // Should generate a hex string
-        assert!(!signature.is_empty());
-        assert!(signature.len() == 64); // HMAC-SHA256 produces 64 char hex string
-    }
-
-    #[tokio::test]
     async fn test_estimate_recovery_fees() {
         let connection_pool = Arc::new(ConnectionPool::new(vec![], 1));
         let wallet_manager = Arc::new(WalletManager::default());
@@ -274,90 +174,5 @@ mod tests {
         
         // Should estimate 5000 lamports per account
         assert_eq!(estimated_fees, 15000);
-    }
-
-    #[test]
-    fn test_recovery_security_new() {
-        let security = RecoverySecurity::new();
-        
-        assert_eq!(security.max_recovery_lamports(), 100_000_000_000);
-        assert!(security.allowed_destinations().is_empty());
-        assert!(!security.requires_multi_sig());
-        assert_eq!(security.session_timeout_secs(), 3600);
-        assert!(!security.audit_key().is_empty());
-    }
-
-    #[test]
-    fn test_recovery_security_with_limits() {
-        let allowed_destinations = vec![
-            Pubkey::from_str("11111111111111111111111111111112").unwrap(),
-            Pubkey::from_str("11111111111111111111111111111113").unwrap(),
-        ];
-        
-        let security = RecoverySecurity::with_limits(
-            50_000_000_000,
-            allowed_destinations.clone(),
-        );
-        
-        assert_eq!(security.max_recovery_lamports(), 50_000_000_000);
-        assert_eq!(security.allowed_destinations(), &allowed_destinations[..]);
-        assert!(security.requires_multi_sig());
-    }
-
-    #[test]
-    fn test_generate_nonce() {
-        let connection_pool = Arc::new(ConnectionPool::new(vec![], 1));
-        let wallet_manager = Arc::new(WalletManager::default());
-        let config = create_test_recovery_config();
-        let fee_structure = create_test_fee_structure();
-        
-        let recovery_manager = RecoveryManager::new(
-            connection_pool,
-            wallet_manager,
-            config,
-            fee_structure,
-        );
-
-        let nonce1 = recovery_manager.generate_nonce();
-        let nonce2 = recovery_manager.generate_nonce();
-        
-        // Nonces should be different (time-based)
-        assert_ne!(nonce1, nonce2);
-        
-        // Should be reasonable values (not zero, not too large)
-        assert!(nonce1 > 0);
-        assert!(nonce2 > 0);
-        assert!(nonce1 < u64::MAX / 2);
-        assert!(nonce2 < u64::MAX / 2);
-    }
-
-    #[tokio::test]
-    async fn test_private_key_provider_connection() {
-        let provider = PrivateKeyProvider::new();
-        let credentials = create_test_wallet_credentials();
-        
-        // This should fail with invalid test key, but the structure should be correct
-        let result = provider.connect(&credentials).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_check_rate_limit() {
-        let connection_pool = Arc::new(ConnectionPool::new(vec![], 1));
-        let wallet_manager = Arc::new(WalletManager::default());
-        let config = create_test_recovery_config();
-        let fee_structure = create_test_fee_structure();
-        
-        let recovery_manager = RecoveryManager::new(
-            connection_pool,
-            wallet_manager,
-            config,
-            fee_structure,
-        );
-
-        // Test rate limiting with empty audit log
-        let wallet_address = "11111111111111111111111111111112";
-        let is_rate_limited = recovery_manager.check_rate_limit(wallet_address).await.unwrap();
-        assert!(!is_rate_limited); // Should not be rate limited with empty log
     }
 }

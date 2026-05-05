@@ -77,6 +77,9 @@ pub enum SolanaRecoverError {
     #[error("Security error: {0}")]
     SecurityError(String),
     
+    #[error("Security violation: {0}")]
+    SecurityViolation(String),
+    
     #[error("Circuit breaker open: {0}")]
     CircuitBreakerOpen(String),
     
@@ -115,6 +118,7 @@ impl Clone for SolanaRecoverError {
             SolanaRecoverError::RusqliteError(msg) => SolanaRecoverError::RusqliteError(msg.clone()),
             SolanaRecoverError::TransactionError(msg) => SolanaRecoverError::TransactionError(msg.clone()),
             SolanaRecoverError::SecurityError(msg) => SolanaRecoverError::SecurityError(msg.clone()),
+            SolanaRecoverError::SecurityViolation(msg) => SolanaRecoverError::SecurityViolation(msg.clone()),
             SolanaRecoverError::CircuitBreakerOpen(msg) => SolanaRecoverError::CircuitBreakerOpen(msg.clone()),
             SolanaRecoverError::NftError(msg) => SolanaRecoverError::NftError(msg.clone()),
             SolanaRecoverError::MockError(msg) => SolanaRecoverError::MockError(msg.clone()),

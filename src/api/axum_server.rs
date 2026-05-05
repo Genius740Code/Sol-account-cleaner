@@ -148,6 +148,7 @@ impl IntoResponse for SolanaRecoverError {
             SolanaRecoverError::ConfigurationError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Configuration error".to_string()),
             SolanaRecoverError::IoError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "IO error".to_string()),
             SolanaRecoverError::SecurityError(msg) => (StatusCode::FORBIDDEN, msg),
+            SolanaRecoverError::SecurityViolation(msg) => (StatusCode::FORBIDDEN, msg),
             SolanaRecoverError::CircuitBreakerOpen(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             SolanaRecoverError::NftError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("NFT error: {}", msg)),
             SolanaRecoverError::MockError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Mock error: {}", msg)),
