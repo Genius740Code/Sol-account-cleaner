@@ -8,11 +8,16 @@ mod tests {
     async fn test_private_key_connection_flow() {
         let provider = PrivateKeyProvider::new();
         
-        // Test with a sample private key (this is a test keypair)
-        let test_private_key = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqYz4eg5vZ8LJjKxHn3";
+        // Test with a sample private key from environment variable
+        let test_private_key = std::env::var("TEST_PRIVATE_KEY")
+            .unwrap_or_else(|_| {
+                // Generate a test keypair if no environment variable is set
+                let test_keypair = solana_sdk::signature::Keypair::new();
+                bs58::encode(test_keypair.to_bytes()).into_string()
+            });
         
         println!("Testing private key parsing...");
-        let parse_result = provider.parse_private_key(test_private_key);
+        let parse_result = provider.parse_private_key(&test_private_key);
         assert!(parse_result.is_ok(), "Private key parsing should succeed");
         
         let keypair = parse_result.unwrap();
@@ -22,7 +27,7 @@ mod tests {
         println!("Testing wallet connection...");
         let credentials = WalletCredentials {
             credentials: WalletCredentialData::PrivateKey {
-                private_key: test_private_key.to_string(),
+                private_key: test_private_key,
             },
         };
         

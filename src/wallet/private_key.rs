@@ -10,15 +10,57 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use zeroize::Zeroize;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, Duration};
 use tokio::sync::RwLock;
 use uuid::Uuid;
+use serde::{Serialize, Deserialize};
+use once_cell::sync::Lazy;
+
+// Secure in-memory registry for private key connections
+// This is never serialized and only exists in memory
+static PRIVATE_KEY_REGISTRY: Lazy<Mutex<HashMap<String, PrivateKeyConnection>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
+
+// Structure for secure private key connections
+#[derive(Clone)]
+struct PrivateKeyConnection {
+    id: String,
+    secret_key: SecretKey,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
 
 // Secure wrapper for private key data that implements zeroization
 #[derive(Clone)]
 pub struct SecretKey {
     data: Arc<std::sync::Mutex<Vec<u8>>>,
+}
+
+// Custom serialization for SecretKey that doesn't expose the actual key
+impl Serialize for SecretKey {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Only serialize a placeholder, not the actual key
+        serializer.serialize_str("[REDACTED_SECRET_KEY]")
+    }
+}
+
+// Custom deserialization for SecretKey
+impl<'de> Deserialize<'de> for SecretKey {
+    fn deserialize<D>(_deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // For security, don't allow deserialization of secret keys from serialized data
+        // This forces keys to be created fresh from secure sources
+        Err(serde::de::Error::custom(
+            "SecretKey cannot be deserialized from serialized data for security reasons"
+        ))
+    }
 }
 
 impl SecretKey {
@@ -47,9 +89,10 @@ pub struct PrivateKeyProvider {
     validator: Arc<TransactionValidator>,
     nonce_manager: Arc<NonceManager>,
     audit_logger: Arc<AuditLogger>,
-    rate_limiter: Arc<RwLock<std::collections::HashMap<String, SystemTime>>>,
+    rate_limiter: Arc<RwLock<std::collections::HashMap<String, (SystemTime, u32)>>>,
     max_signing_attempts: u32,
     signing_timeout_ms: u64,
+    max_transaction_size: usize,
 }
 
 impl PrivateKeyProvider {
@@ -73,6 +116,7 @@ impl PrivateKeyProvider {
             rate_limiter: Arc::new(RwLock::new(std::collections::HashMap::new())),
             max_signing_attempts: 3,
             signing_timeout_ms: 30000,
+            max_transaction_size: 1232, // Default Solana transaction size
         }
     }
 
@@ -80,15 +124,40 @@ impl PrivateKeyProvider {
         let mut rate_limiter = self.rate_limiter.write().await;
         let now = SystemTime::now();
         
-        if let Some(last_sign) = rate_limiter.get(wallet_address) {
-            if now.duration_since(*last_sign).unwrap_or(Duration::ZERO) < Duration::from_secs(1) {
+        // Clean up old entries (older than 5 minutes) to prevent memory leaks
+        let cutoff_time = now - Duration::from_secs(300);
+        rate_limiter.retain(|_, (timestamp, _)| *timestamp > cutoff_time);
+        
+        if let Some((last_sign, attempt_count)) = rate_limiter.get(wallet_address) {
+            let time_since_last = now.duration_since(*last_sign).unwrap_or(Duration::ZERO);
+            
+            // Enhanced exponential backoff: 2s, 4s, 8s, 16s, 32s, max 60s
+            // More aggressive starting delay for better security
+            let backoff_time = Duration::from_secs(2_u64.pow((*attempt_count).min(5)).min(60));
+            
+            // Additional security: if too many attempts, temporarily block
+            if *attempt_count >= 10 {
                 return Err(SolanaRecoverError::RateLimitExceeded(
-                    "Too many signing requests. Please wait before trying again.".to_string()
+                    "Too many failed attempts. Account temporarily blocked for security reasons.".to_string()
+                ));
+            }
+            
+            if time_since_last < backoff_time {
+                return Err(SolanaRecoverError::RateLimitExceeded(
+                    format!("Rate limit exceeded. Please wait {} seconds before trying again.", 
+                           backoff_time.as_secs() - time_since_last.as_secs())
                 ));
             }
         }
         
-        rate_limiter.insert(wallet_address.to_string(), now);
+        // Track attempt count for exponential backoff
+        let attempt_count = if let Some((_, count)) = rate_limiter.get(wallet_address) {
+            *count + 1
+        } else {
+            1
+        };
+        
+        rate_limiter.insert(wallet_address.to_string(), (now, attempt_count));
         Ok(())
     }
 
@@ -143,21 +212,36 @@ impl WalletProvider for PrivateKeyProvider {
     async fn connect(&self, credentials: &WalletCredentials) -> crate::core::Result<WalletConnection> {
         if let WalletCredentialData::PrivateKey { private_key } = &credentials.credentials {
             // Validate the private key format
-            let _keypair = self.parse_private_key(private_key)?;
+            let keypair = self.parse_private_key(private_key)?;
             
             // SECURITY FIX: Store private key securely using SecretKey wrapper
-            let _secret_key = SecretKey::new(
-                self.parse_private_key(private_key)?.to_bytes().to_vec()
-            );
+            let secret_key = SecretKey::new(keypair.to_bytes().to_vec());
+            
+            // Create connection with secure key storage
+            let connection_id = uuid::Uuid::new_v4().to_string();
+            
+            // Store the secret key in a secure registry for this connection
+            let secure_connection = PrivateKeyConnection {
+                id: connection_id.clone(),
+                secret_key: secret_key.clone(),
+                created_at: chrono::Utc::now(),
+            };
+            
+            // Store in our secure registry (in-memory only, never serialized)
+            let mut registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+            registry.insert(connection_id.clone(), secure_connection);
             
             let connection = WalletConnection {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: connection_id,
                 wallet_type: WalletType::PrivateKey,
                 connection_data: ConnectionData::PrivateKey {
-                    private_key: private_key.clone(), // Keep original for reconnection if needed
+                    private_key: "[SECURELY_STORED]".to_string(), // Placeholder only
                 },
                 created_at: chrono::Utc::now(),
             };
+            
+            // The secret_key is now stored in the secure registry and will be zeroized when dropped
+            // No need to explicitly drop here as it's safely stored
 
             Ok(connection)
         } else {
@@ -168,93 +252,116 @@ impl WalletProvider for PrivateKeyProvider {
     }
 
     async fn get_public_key(&self, connection: &WalletConnection) -> crate::core::Result<String> {
-        if let ConnectionData::PrivateKey { private_key } = &connection.connection_data {
-            let keypair = self.parse_private_key(private_key)?;
+        // Access the secure registry to get the secret key
+        let registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+        if let Some(secure_conn) = registry.get(&connection.id) {
+            let key_bytes = secure_conn.secret_key.as_bytes()
+                .map_err(|_| SolanaRecoverError::AuthenticationError(
+                    "Failed to access private key".to_string()
+                ))?;
+            let keypair = Keypair::from_bytes(&key_bytes)
+                .map_err(|_| SolanaRecoverError::AuthenticationError(
+                    "Invalid private key in connection".to_string()
+                ))?;
             Ok(keypair.pubkey().to_string())
         } else {
             Err(SolanaRecoverError::AuthenticationError(
-                "Invalid PrivateKey connection".to_string()
+                "Invalid PrivateKey connection - not found in secure registry".to_string()
             ))
         }
     }
 
     async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8], rpc_url: Option<&str>) -> crate::core::Result<Vec<u8>> {
-        if let ConnectionData::PrivateKey { private_key } = &connection.connection_data {
-            let security_context = self.create_security_context(&connection.id);
-            let wallet_address: String = self.get_public_key(connection).await?;
-            
-            // Check rate limiting
-            self.check_rate_limit(&wallet_address).await?;
-            
-            // Parse and validate the transaction
-            let keypair = self.parse_private_key(private_key)?;
-            let tx: Transaction = bincode::deserialize(transaction)
-                .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to deserialize transaction: {}", e)))?;
-            
-            // Log signing request
-            self.audit_logger.log_transaction_signing(
-                None,
-                "PrivateKey".to_string(),
-                Some(keypair.pubkey()),
-                &tx,
-                solana_sdk::signature::Signature::default(), // Will be updated after signing
-                security_context.clone(),
-                RiskLevel::Medium,
-            ).await?;
-            
-            // Validate transaction with RPC client
-            let url = rpc_url.unwrap_or("https://api.mainnet-beta.solana.com");
-            let rpc_client = solana_client::rpc_client::RpcClient::new(url);
-            let validation_result = self.validate_transaction_with_retry(transaction, &rpc_client, self.max_signing_attempts).await?;
-            
-            // Check for replay attacks
-            self.nonce_manager.validate_transaction(&tx).await?;
-            
-            // Determine risk level based on validation
-            let risk_level = if validation_result.warnings.is_empty() {
-                RiskLevel::Low
-            } else if validation_result.warnings.len() < 3 {
-                RiskLevel::Medium
+        // Access the secure registry to get the secret key
+        let (keypair, wallet_address) = {
+            let registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+            if let Some(secure_conn) = registry.get(&connection.id) {
+                // Access private key securely from SecretKey wrapper
+                let key_bytes = secure_conn.secret_key.as_bytes()
+                    .map_err(|_| SolanaRecoverError::AuthenticationError(
+                        "Failed to access private key".to_string()
+                    ))?;
+                let keypair = Keypair::from_bytes(&key_bytes)
+                    .map_err(|_| SolanaRecoverError::AuthenticationError(
+                        "Invalid private key in connection".to_string()
+                    ))?;
+                
+                let wallet_address = keypair.pubkey().to_string();
+                (keypair, wallet_address)
             } else {
-                RiskLevel::High
-            };
-            
-            // Sign the transaction with timeout
-            let signed_tx = tokio::time::timeout(
-                Duration::from_millis(self.signing_timeout_ms),
-                Self::sign_with_timeout(&keypair, &tx)
-            ).await
-            .map_err(|_| SolanaRecoverError::TimeoutError(
-                "Transaction signing timed out".to_string()
-            ))??;
-            
-            // Log successful signing
-            self.audit_logger.log_transaction_signing(
-                None,
-                "PrivateKey".to_string(),
-                Some(keypair.pubkey()),
-                &signed_tx,
-                *signed_tx.signatures.first().ok_or_else(|| {
-                    SolanaRecoverError::TransactionError("No signature found".to_string())
-                })?,
-                security_context,
-                risk_level,
-            ).await?;
-            
-            // Register nonce for replay protection
-            if Self::is_nonce_transaction(&signed_tx) {
-                let nonce = signed_tx.message.recent_blockhash;
-                self.nonce_manager.register_nonce(keypair.pubkey(), nonce).await?;
+                return Err(SolanaRecoverError::AuthenticationError(
+                    "Invalid PrivateKey connection - not found in secure registry".to_string()
+                ));
             }
-            
-            // Return the full serialized signed transaction
-            bincode::serialize(&signed_tx)
-                .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to serialize signed transaction: {}", e)))
+        };
+        
+        let security_context = self.create_security_context(&connection.id);
+        
+        // Check rate limiting
+        self.check_rate_limit(&wallet_address).await?;
+        
+        let tx: Transaction = bincode::deserialize(transaction)
+            .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to deserialize transaction: {}", e)))?;
+        
+        // Log signing request
+        self.audit_logger.log_transaction_signing(
+            None,
+            "PrivateKey".to_string(),
+            Some(keypair.pubkey()),
+            &tx,
+            solana_sdk::signature::Signature::default(), // Will be updated after signing
+            security_context.clone(),
+            RiskLevel::Medium,
+        ).await?;
+        
+        // Validate transaction with RPC client
+        let url = rpc_url.unwrap_or("https://api.mainnet-beta.solana.com");
+        let rpc_client = solana_client::rpc_client::RpcClient::new(url);
+        let validation_result = self.validate_transaction_with_retry(transaction, &rpc_client, self.max_signing_attempts).await?;
+        
+        // Check for replay attacks
+        self.nonce_manager.validate_transaction(&tx).await?;
+        
+        // Determine risk level based on validation
+        let risk_level = if validation_result.warnings.is_empty() {
+            RiskLevel::Low
+        } else if validation_result.warnings.len() < 3 {
+            RiskLevel::Medium
         } else {
-            Err(SolanaRecoverError::AuthenticationError(
-                "Invalid PrivateKey connection".to_string()
-            ))
+            RiskLevel::High
+        };
+        
+        // Sign the transaction with timeout
+        let signed_tx = tokio::time::timeout(
+            Duration::from_millis(self.signing_timeout_ms),
+            Self::sign_with_timeout(&keypair, &tx)
+        ).await
+        .map_err(|_| SolanaRecoverError::TimeoutError(
+            "Transaction signing timed out".to_string()
+        ))??;
+        
+        // Log successful signing
+        self.audit_logger.log_transaction_signing(
+            None,
+            "PrivateKey".to_string(),
+            Some(keypair.pubkey()),
+            &signed_tx,
+            *signed_tx.signatures.first().ok_or_else(|| {
+                SolanaRecoverError::TransactionError("No signature found".to_string())
+            })?,
+            security_context,
+            risk_level,
+        ).await?;
+        
+        // Register nonce for replay protection
+        if Self::is_nonce_transaction(&signed_tx) {
+            let nonce = signed_tx.message.recent_blockhash;
+            self.nonce_manager.register_nonce(keypair.pubkey(), nonce).await?;
         }
+        
+        // Return the full serialized signed transaction
+        bincode::serialize(&signed_tx)
+            .map_err(|e| SolanaRecoverError::SerializationError(format!("Failed to serialize signed transaction: {}", e)))
     }
     
     async fn disconnect(&self, connection: &WalletConnection) -> crate::core::Result<()> {
@@ -273,6 +380,10 @@ impl WalletProvider for PrivateKeyProvider {
             let mut rate_limiter = self.rate_limiter.write().await;
             rate_limiter.remove(&wallet_address);
         }
+        
+        // Clean up secure registry - this will trigger zeroization
+        let mut registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+        registry.remove(&connection.id);
         
         Ok(())
     }
@@ -384,11 +495,16 @@ mod tests {
     async fn test_private_key_connection_flow() {
         let provider = PrivateKeyProvider::new();
         
-        // Test with a sample private key (this is a test keypair)
-        let test_private_key = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqYz4eg5vZ8LJjKxHn3";
+        // SECURITY FIX: Use environment variable for test private key
+        let test_private_key = std::env::var("TEST_PRIVATE_KEY")
+            .unwrap_or_else(|_| {
+                // Generate a test keypair if no environment variable is set
+                let test_keypair = Keypair::new();
+                bs58::encode(test_keypair.to_bytes()).into_string()
+            });
         
         println!("Testing private key parsing...");
-        let parse_result = provider.parse_private_key(test_private_key);
+        let parse_result = provider.parse_private_key(&test_private_key);
         
         if let Ok(keypair) = parse_result {
             println!("Successfully parsed private key");

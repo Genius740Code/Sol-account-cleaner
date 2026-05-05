@@ -33,10 +33,17 @@ mod tests {
     }
 
     fn create_test_wallet_credentials() -> WalletCredentials {
+        let test_private_key = std::env::var("TEST_PRIVATE_KEY")
+            .unwrap_or_else(|_| {
+                // Generate a test keypair if no environment variable is set
+                let test_keypair = solana_sdk::signature::Keypair::new();
+                bs58::encode(test_keypair.to_bytes()).into_string()
+            });
+            
         WalletCredentials {
             wallet_type: WalletType::PrivateKey,
             credentials: WalletCredentialData::PrivateKey {
-                private_key: "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqYz4eg5vZ8LJjKxHn3".to_string(),
+                private_key: test_private_key,
             },
         }
     }
@@ -45,12 +52,18 @@ mod tests {
     async fn test_parse_private_key_base58() {
         let provider = PrivateKeyProvider::new();
         
-        // Test valid base58 private key (this is a test key, not real)
-        let valid_key = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqYz4eg5vZ8LJjKxHn3";
-        let result = provider.parse_private_key(valid_key);
+        // Test valid base58 private key from environment variable
+        let test_private_key = std::env::var("TEST_PRIVATE_KEY")
+            .unwrap_or_else(|_| {
+                // Generate a test keypair if no environment variable is set
+                let test_keypair = solana_sdk::signature::Keypair::new();
+                bs58::encode(test_keypair.to_bytes()).into_string()
+            });
+            
+        let result = provider.parse_private_key(&test_private_key);
         
-        // This should fail with our test implementation since it's not a real Solana keypair
-        assert!(result.is_err());
+        // This should succeed with our test implementation
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
