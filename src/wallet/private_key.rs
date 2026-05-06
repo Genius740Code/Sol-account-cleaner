@@ -24,12 +24,17 @@ static PRIVATE_KEY_REGISTRY: Lazy<Mutex<HashMap<String, PrivateKeyConnection>>> 
     Mutex::new(HashMap::new())
 });
 
+// Add concurrent attempt tracking
+static CONCURRENT_ATTEMPTS: Lazy<Mutex<HashMap<String, u32>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
+
 // Structure for secure private key connections
 #[derive(Clone)]
 struct PrivateKeyConnection {
-    id: String,
+    _id: String,
     secret_key: SecretKey,
-    created_at: chrono::DateTime<chrono::Utc>,
+    _created_at: chrono::DateTime<chrono::Utc>,
 }
 
 // Secure wrapper for private key data that implements zeroization
@@ -92,7 +97,7 @@ pub struct PrivateKeyProvider {
     rate_limiter: Arc<RwLock<std::collections::HashMap<String, (SystemTime, u32)>>>,
     max_signing_attempts: u32,
     signing_timeout_ms: u64,
-    max_transaction_size: usize,
+    _max_transaction_size: usize,
 }
 
 impl PrivateKeyProvider {
@@ -116,11 +121,27 @@ impl PrivateKeyProvider {
             rate_limiter: Arc::new(RwLock::new(std::collections::HashMap::new())),
             max_signing_attempts: 3,
             signing_timeout_ms: 30000,
-            max_transaction_size: 1232, // Default Solana transaction size
+            _max_transaction_size: 1232, // Default Solana transaction size
         }
     }
 
     async fn check_rate_limit(&self, wallet_address: &str) -> Result<()> {
+        // Check concurrent attempts first
+        {
+            let mut concurrent = CONCURRENT_ATTEMPTS.lock().map_err(|_| {
+                SolanaRecoverError::InternalError("Mutex poisoned in concurrent attempts tracking".to_string())
+            })?;
+            
+            let current_attempts = concurrent.entry(wallet_address.to_string()).or_insert(0);
+            
+            if *current_attempts >= 5 { // Max 5 concurrent attempts
+                return Err(SolanaRecoverError::RateLimitExceeded(
+                    "Too many concurrent attempts. Please wait.".to_string()
+                ));
+            }
+            *current_attempts += 1;
+        }
+        
         let mut rate_limiter = self.rate_limiter.write().await;
         let now = SystemTime::now();
         
@@ -158,6 +179,25 @@ impl PrivateKeyProvider {
         };
         
         rate_limiter.insert(wallet_address.to_string(), (now, attempt_count));
+        
+        // Decrement concurrent attempts after rate limit check
+        {
+            let mut concurrent = CONCURRENT_ATTEMPTS.lock().map_err(|_| {
+                SolanaRecoverError::InternalError("Mutex poisoned in concurrent attempts tracking".to_string())
+            })?;
+            
+            if let Some(count) = concurrent.get_mut(wallet_address) {
+                if *count > 0 {
+                    *count -= 1;
+                }
+                
+                // Remove entry if count is 0 to prevent memory leaks
+                if *count == 0 {
+                    concurrent.remove(wallet_address);
+                }
+            }
+        }
+        
         Ok(())
     }
 
@@ -222,13 +262,15 @@ impl WalletProvider for PrivateKeyProvider {
             
             // Store the secret key in a secure registry for this connection
             let secure_connection = PrivateKeyConnection {
-                id: connection_id.clone(),
+                _id: connection_id.clone(),
                 secret_key: secret_key.clone(),
-                created_at: chrono::Utc::now(),
+                _created_at: chrono::Utc::now(),
             };
             
             // Store in our secure registry (in-memory only, never serialized)
-            let mut registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+            let mut registry = PRIVATE_KEY_REGISTRY.lock().map_err(|_| {
+                SolanaRecoverError::InternalError("Mutex poisoned, critical security failure".to_string())
+            })?;
             registry.insert(connection_id.clone(), secure_connection);
             
             let connection = WalletConnection {
@@ -253,7 +295,9 @@ impl WalletProvider for PrivateKeyProvider {
 
     async fn get_public_key(&self, connection: &WalletConnection) -> crate::core::Result<String> {
         // Access the secure registry to get the secret key
-        let registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+        let registry = PRIVATE_KEY_REGISTRY.lock().map_err(|_| {
+            SolanaRecoverError::InternalError("Mutex poisoned, critical security failure".to_string())
+        })?;
         if let Some(secure_conn) = registry.get(&connection.id) {
             let key_bytes = secure_conn.secret_key.as_bytes()
                 .map_err(|_| SolanaRecoverError::AuthenticationError(
@@ -274,7 +318,9 @@ impl WalletProvider for PrivateKeyProvider {
     async fn sign_transaction(&self, connection: &WalletConnection, transaction: &[u8], rpc_url: Option<&str>) -> crate::core::Result<Vec<u8>> {
         // Access the secure registry to get the secret key
         let (keypair, wallet_address) = {
-            let registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+            let registry = PRIVATE_KEY_REGISTRY.lock().map_err(|_| {
+                SolanaRecoverError::InternalError("Mutex poisoned, critical security failure".to_string())
+            })?;
             if let Some(secure_conn) = registry.get(&connection.id) {
                 // Access private key securely from SecretKey wrapper
                 let key_bytes = secure_conn.secret_key.as_bytes()
@@ -382,7 +428,9 @@ impl WalletProvider for PrivateKeyProvider {
         }
         
         // Clean up secure registry - this will trigger zeroization
-        let mut registry = PRIVATE_KEY_REGISTRY.lock().unwrap();
+        let mut registry = PRIVATE_KEY_REGISTRY.lock().map_err(|_| {
+            SolanaRecoverError::InternalError("Mutex poisoned, critical security failure".to_string())
+        })?;
         registry.remove(&connection.id);
         
         Ok(())

@@ -627,3 +627,46 @@ impl BasicConnectionPool {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct ConnectionMetrics {
+    pub avg_response_time_ms: f64,
+    pub success_rate: f64,
+    pub active_connections: usize,
+    pub queue_depth: usize,
+}
+
+impl EnhancedConnectionPool {
+    pub fn get_connection_metrics(&self) -> ConnectionMetrics {
+        // Calculate real-time metrics
+        ConnectionMetrics {
+            avg_response_time_ms: self.calculate_avg_response_time(),
+            success_rate: self.calculate_success_rate(),
+            active_connections: self.count_active_connections(),
+            queue_depth: self.get_queue_depth(),
+        }
+    }
+    
+    fn calculate_avg_response_time(&self) -> f64 {
+        // Implementation would track response times
+        50.0 // Placeholder
+    }
+    
+    fn calculate_success_rate(&self) -> f64 {
+        // Implementation would track success/failure rates
+        0.95 // Placeholder
+    }
+    
+    fn count_active_connections(&self) -> usize {
+        // Count active connections across all pools
+        self.connection_pools.iter().map(|_pool| {
+            // In real implementation, would get actual count
+            5 // Placeholder
+        }).sum()
+    }
+    
+    fn get_queue_depth(&self) -> usize {
+        // Get current queue depth
+        0 // Placeholder
+    }
+}

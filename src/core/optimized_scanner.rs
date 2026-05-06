@@ -55,6 +55,9 @@ pub struct OptimizedScannerConfig {
     pub scan_timeout: Duration,
     pub prefetch_window_size: usize,
     pub batch_size_multiplier: f64,
+    // Network performance tracking for adaptive sizing
+    pub avg_network_latency_ms: f64,
+    pub recent_success_rate: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +127,9 @@ impl Default for OptimizedScannerConfig {
             scan_timeout: Duration::from_secs(2),
             prefetch_window_size: 50,
             batch_size_multiplier: 2.0,
+            // Network performance tracking defaults
+            avg_network_latency_ms: 50.0,
+            recent_success_rate: 0.95,
         }
     }
 }
@@ -750,7 +756,14 @@ impl OptimizedWalletScanner {
             PerformanceMode::Latency => std::cmp::min(10, total_accounts),
             PerformanceMode::Balanced => std::cmp::min(50, total_accounts),
             PerformanceMode::ResourceEfficient => std::cmp::min(25, total_accounts),
-            PerformanceMode::UltraFast => std::cmp::min(200, total_accounts), // Maximum batch size for ultra-fast
+            PerformanceMode::UltraFast => {
+    // Adaptive batch sizing based on network conditions
+    let base_size = std::cmp::min(200, total_accounts);
+    let latency_factor = if self.config.avg_network_latency_ms < 100.0 { 2.0 } else { 1.0 };
+    let success_rate_factor = self.config.recent_success_rate;
+    
+    (base_size as f64 * latency_factor * success_rate_factor) as usize
+},
         }
     }
 

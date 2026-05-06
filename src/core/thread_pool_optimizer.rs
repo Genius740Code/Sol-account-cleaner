@@ -261,6 +261,12 @@ impl OptimizedThreadPool {
             use libc::{cpu_set_t, sched_setaffinity, sched_getaffinity};
             use std::mem;
             
+            // Add CPU core validation
+            let num_cores = num_cpus::get();
+            if _core_id >= num_cores {
+                return Err(format!("Invalid CPU core ID: {} (max: {})", _core_id, num_cores - 1));
+            }
+            
             unsafe {
                 let mut cpuset: cpu_set_t = mem::zeroed();
                 libc::CPU_ZERO(&mut cpuset);
@@ -289,13 +295,15 @@ impl OptimizedThreadPool {
             use libc::{cpu_set_t, sched_getaffinity};
             use std::mem;
             
+            let num_cores = num_cpus::get();
+            
             unsafe {
                 let mut cpuset: cpu_set_t = mem::zeroed();
                 let result = sched_getaffinity(0, mem::size_of::<cpu_set_t>(), &mut cpuset);
                 
                 if result == 0 {
                     let mut cores = Vec::new();
-                    for i in 0..libc::CPU_SETSIZE as usize {
+                    for i in 0..num_cores.min(libc::CPU_SETSIZE as usize) {
                         if libc::CPU_ISSET(i, &cpuset) {
                             cores.push(i);
                         }

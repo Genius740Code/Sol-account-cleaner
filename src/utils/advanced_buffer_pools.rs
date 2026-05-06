@@ -200,6 +200,7 @@ impl AdvancedBufferPool {
                     created_at: chrono::Utc::now(),
                 }
             )),
+            
             stats: Arc::new(RwLock::new(BufferPoolStats::default())),
             config,
         });
