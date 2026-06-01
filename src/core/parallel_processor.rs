@@ -5,7 +5,7 @@ use uuid::Uuid;
 use chrono::Utc;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, Notify};
 use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 
 /// Priority levels for wallet processing
@@ -48,6 +48,7 @@ pub struct WorkStealingQueue<T: Send> {
     global_queue: Arc<SegQueue<T>>,
     worker_queues: Arc<Vec<Arc<SegQueue<T>>>>,
     num_workers: usize,
+    notifier: Arc<Notify>,
 }
 
 impl<T: Send> WorkStealingQueue<T> {
@@ -61,20 +62,24 @@ impl<T: Send> WorkStealingQueue<T> {
             global_queue: Arc::new(SegQueue::new()),
             worker_queues: Arc::new(worker_queues),
             num_workers,
+            notifier: Arc::new(Notify::new()),
         }
     }
     
-    /// Push a task to the global queue
+    /// Push a task to the global queue and notify waiting workers
     pub fn push(&self, task: T) {
         self.global_queue.push(task);
+        self.notifier.notify_waiters();
     }
     
-    /// Push a task to a specific worker's local queue
+    /// Push a task to a specific worker's local queue and notify waiting workers
     pub fn push_local(&self, worker_id: usize, task: T) {
         if worker_id < self.worker_queues.len() {
             self.worker_queues[worker_id].push(task);
+            self.notifier.notify_waiters();
         } else {
             self.global_queue.push(task);
+            self.notifier.notify_waiters();
         }
     }
     
@@ -103,6 +108,11 @@ impl<T: Send> WorkStealingQueue<T> {
         
         None
     }
+
+    /// Wait for new tasks to be available
+    pub async fn wait_for_tasks(&self) {
+        self.notifier.notified().await;
+    }
     
     /// Get the number of workers
     pub fn num_workers(&self) -> usize {
@@ -112,13 +122,13 @@ impl<T: Send> WorkStealingQueue<T> {
     /// Check if all queues appear to be empty
     pub fn is_empty(&self) -> bool {
         // Check global queue
-        if self.global_queue.pop().is_some() {
+        if !self.global_queue.is_empty() {
             return false;
         }
         
         // Check worker queues
         for queue in self.worker_queues.iter() {
-            if queue.pop().is_some() {
+            if !queue.is_empty() {
                 return false;
             }
         }
@@ -464,8 +474,8 @@ impl IntelligentParallelProcessor {
                         if work_queue.is_empty() {
                             break;
                         }
-                        // Brief pause before trying again
-                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        // Wait for new tasks to be available
+                        work_queue.wait_for_tasks().await;
                     }
                 }
             });
