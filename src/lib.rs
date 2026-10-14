@@ -102,18 +102,8 @@ pub const DEFAULT_MAINNET_ENDPOINT: &str = "https://api.mainnet-beta.solana.com"
 /// Default RPC endpoint for devnet
 pub const DEFAULT_DEVNET_ENDPOINT: &str = "https://api.devnet.solana.com";
 
-/// Represents an empty token account
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmptyAccount {
-    /// The account address
-    pub address: String,
-    /// The mint address of token
-    pub mint: String,
-    /// The owner address
-    pub owner: String,
-    /// Balance in lamports (recoverable amount after rent exemption)
-    pub lamports: u64,
-}
+/// Represents an empty token account (re-exported from core for API stability)
+pub use core::EmptyAccount;
 
 /// Ultra-fast unified wallet scanning with SOL and NFT support
 /// 

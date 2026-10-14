@@ -233,13 +233,13 @@ impl WalletScanner {
         
         debug!("Found {} unique accounts after deduplication", unique_accounts.len());
 
-        // Parallelize account checking using futures::future::join_all
-        let check_futures: Vec<_> = unique_accounts
-            .iter()
+        // Bounded parallel account checking (max 20 concurrent to avoid RPC storms)
+        use futures::StreamExt;
+        let results: Vec<_> = futures::stream::iter(unique_accounts.iter())
             .map(|account| self.check_empty_account(account, wallet_address))
-            .collect();
-        
-        let results = futures::future::join_all(check_futures).await;
+            .buffer_unordered(20)
+            .collect()
+            .await;
         
         for result in results {
             match result {
@@ -309,8 +309,13 @@ impl WalletScanner {
                     if let Some(info) = parsed.parsed.get("info") {
                         if let Some(token_amount) = info.get("tokenAmount") {
                             if let Some(amount_str) = token_amount.get("amount") {
-                                match amount_str.as_str().unwrap_or("0").parse::<u64>() {
-                                    Ok(amount) if amount == 0 && account.lamports > 0 => {
+                                let amount_opt = match amount_str {
+                                    serde_json::Value::String(s) => s.parse::<u64>().ok(),
+                                    serde_json::Value::Number(n) => n.as_u64(),
+                                    _ => None,
+                                };
+                                match amount_opt {
+                                    Some(0) if account.lamports > 0 => {
                                         let owner = info.get("owner")
                                             .and_then(|o| o.as_str())
                                             .unwrap_or("unknown")
@@ -326,11 +331,11 @@ impl WalletScanner {
                                             mint,
                                         }));
                                     }
-                                    Ok(_) => {
+                                    Some(_) => {
                                         // Non-zero amount, not empty
                                     }
-                                    Err(e) => {
-                                        warn!("Failed to parse token amount for {}: {}", account_pubkey_str, e);
+                                    None => {
+                                        warn!("Failed to parse token amount for {}", account_pubkey_str);
                                     }
                                 }
                             }

@@ -150,21 +150,20 @@ impl BatchProcessor {
                             let wallet_addr = wallet_address.clone();
                             
                             let task = tokio::spawn(async move {
-                                let _permit = semaphore.acquire().await.unwrap();
+                                let _permit = semaphore.acquire().await.map_err(|_| SolanaRecoverError::ConnectionPoolExhausted)?;
                                 scanner.scan_wallet(&wallet_addr).await
                             });
-                            tasks.push(task);
+                            tasks.push((wallet_addr, task));
                         }
                         
                         // Wait for all tasks in this chunk
-                        for task in tasks {
-                            match task.await.unwrap() {
-                                Ok(result) => chunk_results.push(result),
-                                Err(e) => {
-                                    // Create error result
+                        for (wallet_addr, task) in tasks {
+                            match task.await {
+                                Ok(Ok(result)) => chunk_results.push(result),
+                                Ok(Err(e)) => {
                                     chunk_results.push(ScanResult {
                                         id: Uuid::new_v4(),
-                                        wallet_address: "unknown".to_string(), // Will be set properly
+                                        wallet_address: wallet_addr.clone(),
                                         status: ScanStatus::Failed,
                                         result: None,
                                         empty_accounts_found: 0,
@@ -173,6 +172,20 @@ impl BatchProcessor {
                                         created_at: Utc::now(),
                                         completed_at: Some(Utc::now()),
                                         error_message: Some(e.to_string()),
+                                    });
+                                }
+                                Err(join_err) => {
+                                    chunk_results.push(ScanResult {
+                                        id: Uuid::new_v4(),
+                                        wallet_address: wallet_addr.clone(),
+                                        status: ScanStatus::Failed,
+                                        result: None,
+                                        empty_accounts_found: 0,
+                                        recoverable_sol: 0.0,
+                                        scan_time_ms: 0,
+                                        created_at: Utc::now(),
+                                        completed_at: Some(Utc::now()),
+                                        error_message: Some(format!("task join failed: {}", join_err)),
                                     });
                                 }
                             }

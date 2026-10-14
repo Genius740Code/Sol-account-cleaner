@@ -18,7 +18,6 @@ use axum::{
 };
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::{CorsLayer, Any},
     trace::TraceLayer,
     compression::CompressionLayer,
 };
@@ -218,7 +217,7 @@ pub async fn start_server(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
                 .layer(CompressionLayer::new())
-                .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
+                .layer(crate::api::middleware::cors_layer())
         )
         .with_state(state_with_metrics);
 

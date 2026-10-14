@@ -110,9 +110,17 @@ async fn handle_connection(
     mut stream: tokio::net::TcpStream,
     state: ApiState,
 ) -> Result<()> {
-    let mut buffer = [0; 1024];
-    let n = stream.read(&mut buffer).await
+    // NOTE: Legacy raw-TCP JSON server. Prefer Axum REST server (axum_server.rs)
+    // for production (proper routing, TLS termination, auth middleware).
+    // 64KB cap prevents oversized batch payloads from exhausting memory.
+    let mut buffer = vec![0u8; 65536];
+    let n = stream.read(&mut buffer[..]).await
         .map_err(|e| crate::SolanaRecoverError::IoError(e.to_string()))?;
+    if n >= buffer.len() {
+        return Err(crate::SolanaRecoverError::InvalidInput(
+            "Request too large (max 64KB for legacy server; use Axum server for batch)".to_string()
+        ));
+    }
     
     let request = String::from_utf8_lossy(&buffer[..n]);
     

@@ -8,10 +8,10 @@ pub struct InputValidator;
 impl InputValidator {
     /// Validate wallet address format and structure
     pub fn validate_wallet_address(address: &str) -> Result<()> {
-        // Check length
-        if address.len() != 44 {
+        // Base58 Solana pubkeys are 32 bytes -> typically 43-44 chars
+        if address.len() < 32 || address.len() > 44 {
             return Err(SolanaRecoverError::InvalidInput(
-                format!("Invalid address length: expected 44, got {}", address.len())
+                format!("Invalid address length: expected 32-44, got {}", address.len())
             ));
         }
         

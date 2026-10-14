@@ -834,7 +834,9 @@ impl RecoverySecurity {
     pub fn new() -> Self {
         let audit_key = std::env::var("RECOVERY_AUDIT_KEY")
             .unwrap_or_else(|_| {
-                // Generate a random key if not configured
+                // Ephemeral key: audit signatures won't verify across restarts.
+                // Set RECOVERY_AUDIT_KEY env in production for stable audit chains.
+                tracing::warn!("RECOVERY_AUDIT_KEY not set - using ephemeral key (audit log not verifiable across restarts)");
                 format!("{:x}", rand::random::<u64>())
             });
         
@@ -862,7 +864,7 @@ impl RecoverySecurity {
     pub fn with_limits(max_recovery_lamports: u64, allowed_destinations: Vec<Pubkey>) -> Self {
         let audit_key = std::env::var("RECOVERY_AUDIT_KEY")
             .unwrap_or_else(|_| {
-                // Generate a random key if not configured
+                tracing::warn!("RECOVERY_AUDIT_KEY not set - using ephemeral key (audit log not verifiable across restarts)");
                 format!("{:x}", rand::random::<u64>())
             });
         

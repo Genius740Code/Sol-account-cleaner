@@ -3,7 +3,7 @@
 //! This module consolidates all scanner functionality into a single, cohesive architecture
 //! using the strategy pattern to eliminate code duplication and improve maintainability.
 
-use crate::core::{Result, SolanaRecoverError, ScanResult, BatchScanRequest, BatchScanResult};
+use crate::core::{Result, SolanaRecoverError, ScanResult, ScanStatus, BatchScanRequest, BatchScanResult};
 use crate::rpc::{ConnectionPoolTrait};
 use crate::utils::cache::{CacheTrait, MetricsTrait};
 use std::sync::Arc;
@@ -164,23 +164,43 @@ impl ScanStrategy for UltraFastStrategy {
         let mut results = Vec::new();
         
         for wallet_address in &request.wallet_addresses {
-            let scan_result = self.scan_wallet(wallet_address, context).await?;
-            results.push(scan_result);
+            match self.scan_wallet(wallet_address, context).await {
+                Ok(scan_result) => results.push(scan_result),
+                Err(e) => results.push(ScanResult {
+                    id: uuid::Uuid::new_v4(),
+                    wallet_address: wallet_address.clone(),
+                    status: ScanStatus::Failed,
+                    result: None,
+                    empty_accounts_found: 0,
+                    recoverable_sol: 0.0,
+                    scan_time_ms: 0,
+                    created_at: Utc::now(),
+                    completed_at: Some(Utc::now()),
+                    error_message: Some(e.to_string()),
+                }),
+            }
         }
         
         let duration = start_time.elapsed();
         info!("Ultra-fast batch scan completed in {}ms", duration.as_millis());
+
+        let successful_scans = results.iter().filter(|r| r.status == ScanStatus::Completed).count();
+        let failed_scans = results.len().saturating_sub(successful_scans);
+        let total_recoverable_sol: f64 = results.iter()
+            .filter_map(|r| r.result.as_ref())
+            .map(|w| w.recoverable_sol)
+            .sum();
         
         Ok(BatchScanResult {
             request_id: request.id,
             batch_id: None,
             results,
             total_wallets: request.wallet_addresses.len(),
-            successful_scans: request.wallet_addresses.len(),
-            failed_scans: 0,
-            completed_wallets: request.wallet_addresses.len(),
-            failed_wallets: 0,
-            total_recoverable_sol: 0.0,
+            successful_scans,
+            failed_scans,
+            completed_wallets: successful_scans,
+            failed_wallets: failed_scans,
+            total_recoverable_sol,
             estimated_fee_sol: 0.0,
             created_at: Utc::now(),
             completed_at: Some(Utc::now()),
@@ -232,23 +252,43 @@ impl ScanStrategy for BalancedStrategy {
         let mut results = Vec::new();
         
         for wallet_address in &request.wallet_addresses {
-            let scan_result = self.scan_wallet(wallet_address, context).await?;
-            results.push(scan_result);
+            match self.scan_wallet(wallet_address, context).await {
+                Ok(scan_result) => results.push(scan_result),
+                Err(e) => results.push(ScanResult {
+                    id: uuid::Uuid::new_v4(),
+                    wallet_address: wallet_address.clone(),
+                    status: ScanStatus::Failed,
+                    result: None,
+                    empty_accounts_found: 0,
+                    recoverable_sol: 0.0,
+                    scan_time_ms: 0,
+                    created_at: Utc::now(),
+                    completed_at: Some(Utc::now()),
+                    error_message: Some(e.to_string()),
+                }),
+            }
         }
         
         let duration = start_time.elapsed();
         info!("Balanced batch scan completed in {}ms", duration.as_millis());
+
+        let successful_scans = results.iter().filter(|r| r.status == ScanStatus::Completed).count();
+        let failed_scans = results.len().saturating_sub(successful_scans);
+        let total_recoverable_sol: f64 = results.iter()
+            .filter_map(|r| r.result.as_ref())
+            .map(|w| w.recoverable_sol)
+            .sum();
         
         Ok(BatchScanResult {
             request_id: request.id,
             batch_id: None,
             results,
             total_wallets: request.wallet_addresses.len(),
-            successful_scans: request.wallet_addresses.len(),
-            failed_scans: 0,
-            completed_wallets: request.wallet_addresses.len(),
-            failed_wallets: 0,
-            total_recoverable_sol: 0.0,
+            successful_scans,
+            failed_scans,
+            completed_wallets: successful_scans,
+            failed_wallets: failed_scans,
+            total_recoverable_sol,
             estimated_fee_sol: 0.0,
             created_at: Utc::now(),
             completed_at: Some(Utc::now()),
@@ -300,23 +340,43 @@ impl ScanStrategy for ResourceEfficientStrategy {
         let mut results = Vec::new();
         
         for wallet_address in &request.wallet_addresses {
-            let scan_result = self.scan_wallet(wallet_address, context).await?;
-            results.push(scan_result);
+            match self.scan_wallet(wallet_address, context).await {
+                Ok(scan_result) => results.push(scan_result),
+                Err(e) => results.push(ScanResult {
+                    id: uuid::Uuid::new_v4(),
+                    wallet_address: wallet_address.clone(),
+                    status: ScanStatus::Failed,
+                    result: None,
+                    empty_accounts_found: 0,
+                    recoverable_sol: 0.0,
+                    scan_time_ms: 0,
+                    created_at: Utc::now(),
+                    completed_at: Some(Utc::now()),
+                    error_message: Some(e.to_string()),
+                }),
+            }
         }
         
         let duration = start_time.elapsed();
         info!("Resource-efficient batch scan completed in {}ms", duration.as_millis());
+
+        let successful_scans = results.iter().filter(|r| r.status == ScanStatus::Completed).count();
+        let failed_scans = results.len().saturating_sub(successful_scans);
+        let total_recoverable_sol: f64 = results.iter()
+            .filter_map(|r| r.result.as_ref())
+            .map(|w| w.recoverable_sol)
+            .sum();
         
         Ok(BatchScanResult {
             request_id: request.id,
             batch_id: None,
             results,
             total_wallets: request.wallet_addresses.len(),
-            successful_scans: request.wallet_addresses.len(),
-            failed_scans: 0,
-            completed_wallets: request.wallet_addresses.len(),
-            failed_wallets: 0,
-            total_recoverable_sol: 0.0,
+            successful_scans,
+            failed_scans,
+            completed_wallets: successful_scans,
+            failed_wallets: failed_scans,
+            total_recoverable_sol,
             estimated_fee_sol: 0.0,
             created_at: Utc::now(),
             completed_at: Some(Utc::now()),

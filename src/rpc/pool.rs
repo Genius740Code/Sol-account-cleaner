@@ -55,7 +55,11 @@ impl ConnectionPool {
     }
 
     pub async fn get_client_internal(&self) -> Result<Arc<RpcClientWrapper>> {
-        let _permit = self.semaphore.acquire().await
+        // Burst gate: limit concurrent client creation, released immediately after checkout.
+        // RpcClientWrapper is thread-safe (Arc internally), so sharing clones is safe.
+        let _permit = tokio::time::timeout(std::time::Duration::from_secs(10), self.semaphore.acquire())
+            .await
+            .map_err(|_| SolanaRecoverError::ConnectionPoolExhausted)?
             .map_err(|_| SolanaRecoverError::ConnectionPoolExhausted)?;
 
         // Update metrics
@@ -67,13 +71,14 @@ impl ConnectionPool {
         let mut clients = self.clients.lock().await;
         
         if let Some(client) = clients.pop_front() {
-            // Quick health check before returning
+            // Quick health check before returning; keep a clone pooled for reuse
             if self.is_client_healthy(&client).await {
-                Ok(client)
-            } else {
-                drop(clients);
-                self.create_new_client().await
+                clients.push_back(client.clone());
+                return Ok(client);
             }
+            // Unhealthy: drop it and create a fresh one below
+            drop(clients);
+            self.create_new_client().await
         } else {
             drop(clients);
             self.create_new_client().await
@@ -81,15 +86,12 @@ impl ConnectionPool {
     }
 
     pub async fn return_client(&self, client: Arc<RpcClientWrapper>) {
+        // Retained for API compatibility. Clients are now shared via clone
+        // and kept pooled in get_client_internal, so this is a no-op
+        // besides ensuring the pool stays populated.
         let mut clients = self.clients.lock().await;
-        if clients.len() < self.max_connections {
+        if clients.len() < self.max_connections && !clients.iter().any(|c| Arc::ptr_eq(c, &client)) {
             clients.push_back(client);
-        }
-        
-        // Update metrics
-        {
-            let mut metrics = self.metrics.write().await;
-            metrics.active_connections = metrics.active_connections.saturating_sub(1);
         }
     }
 
@@ -103,10 +105,12 @@ impl ConnectionPool {
             endpoint.timeout_ms
         )?);
         
-        // Update metrics
+        // Keep a clone pooled for reuse; RpcClient is thread-safe so sharing is safe.
         {
-            let mut metrics = self.metrics.write().await;
-            metrics.active_connections += 1;
+            let mut clients = self.clients.lock().await;
+            if clients.len() < self.max_connections {
+                clients.push_back(client.clone());
+            }
         }
         
         Ok(client)

@@ -41,8 +41,16 @@ pub struct AuthConfig {
 
 impl Default for AuthConfig {
     fn default() -> Self {
+        // Never use a hardcoded secret in production: generate an ephemeral one
+        // and require JWT_SECRET env for stable multi-instance deployments.
+        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            use rand::Rng;
+            let random: [u8; 32] = rand::thread_rng().gen();
+            tracing::warn!("JWT_SECRET not set - using ephemeral random secret (tokens invalid after restart). Set JWT_SECRET env in production.");
+            hex::encode(random)
+        });
         Self {
-            jwt_secret: std::env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret-change-in-production".to_string()),
+            jwt_secret,
             token_expiry_hours: 24,
             api_key_header: "X-API-Key".to_string(),
             enable_auth: std::env::var("ENABLE_AUTH").unwrap_or_else(|_| "true".to_string()) == "true",
@@ -222,11 +230,12 @@ impl SecurityMiddleware {
             return Err(StatusCode::FORBIDDEN);
         }
         
-        // Get or create rate limiter for this API key
+        // Get or create rate limiter for this API key (default to 60/min if claims carry 0)
+        let rps = std::num::NonZeroU32::new(claims.rate_limit_rps).unwrap_or_else(|| std::num::NonZeroU32::new(60).unwrap());
         let limiter = {
             let mut limiters = self.api_key_limiters.write().await;
             limiters.entry(claims.api_key.clone()).or_insert_with(|| {
-                let quota = Quota::per_minute(NonZeroU32::new(claims.rate_limit_rps).unwrap());
+                let quota = Quota::per_minute(rps);
                 Arc::new(RateLimiter::direct(quota))
             }).clone()
         };
@@ -421,14 +430,26 @@ pub async fn logging_middleware(
 }
 
 // CORS middleware configuration
+// NOTE: allow_credentials(true) cannot be combined with wildcard origins in browsers.
+// Configure ALLOWED_ORIGINS env (comma-separated) in production; defaults to permissive for local dev.
 pub fn cors_layer() -> tower_http::cors::CorsLayer {
     use tower_http::cors::{Any, CorsLayer};
     
+    if let Ok(origins) = std::env::var("ALLOWED_ORIGINS") {
+        let origin_list: Vec<_> = origins.split(',').filter_map(|s| {
+            s.trim().parse::<axum::http::HeaderValue>().ok()
+        }).collect();
+        if !origin_list.is_empty() {
+            return CorsLayer::new()
+                .allow_origin(origin_list)
+                .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
+                .allow_headers(Any);
+        }
+    }
     CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
         .allow_headers(Any)
-        .allow_credentials(true)
 }
 
 // Compression middleware configuration

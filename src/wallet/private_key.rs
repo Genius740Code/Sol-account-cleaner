@@ -271,6 +271,12 @@ impl WalletProvider for PrivateKeyProvider {
             let mut registry = PRIVATE_KEY_REGISTRY.lock().map_err(|_| {
                 SolanaRecoverError::InternalError("Mutex poisoned, critical security failure".to_string())
             })?;
+            // Bound registry size to prevent memory exhaustion if disconnect is never called
+            if registry.len() >= 1000 {
+                return Err(SolanaRecoverError::RateLimitExceeded(
+                    "Too many active private-key sessions. Disconnect unused wallets and try again.".to_string()
+                ));
+            }
             registry.insert(connection_id.clone(), secure_connection);
             
             let connection = WalletConnection {

@@ -229,11 +229,12 @@ impl TransactionValidator {
         }
     }
 
-    async fn simulate_transaction(&self, tx: &Transaction, _rpc_client: &solana_client::rpc_client::RpcClient) -> Result<SimulationResult> {
+    async fn simulate_transaction(&self, tx: &Transaction, rpc_client: &solana_client::rpc_client::RpcClient) -> Result<SimulationResult> {
         let simulation = tokio::task::spawn_blocking({
             let tx = tx.clone();
+            let rpc_url = rpc_client.url();
             move || {
-                let rpc_client = solana_client::rpc_client::RpcClient::new("https://api.devnet.solana.com");
+                let rpc_client = solana_client::rpc_client::RpcClient::new(rpc_url);
                 rpc_client
                     .simulate_transaction_with_config(
                         &tx,
