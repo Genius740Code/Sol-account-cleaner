@@ -62,6 +62,10 @@ impl Server {
     }
 }
 
+/// Legacy raw-TCP JSON server. Prefer `crate::api::axum_server::start_server`
+/// (proper routing, middleware, graceful shutdown) for any site backend.
+/// Kept only for local CLI compatibility; do not expose to the internet.
+#[deprecated(note = "Use axum_server::start_server for production; raw TCP has no auth/routing")]
 pub async fn start_server(
     state: ApiState,
     config: &crate::config::ServerConfig,

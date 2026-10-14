@@ -233,6 +233,16 @@ pub struct HttpMetadataFetcher {
     config: MetadataConfig,
 }
 
+/// Returns true for private, loopback, link-local, or otherwise non-public IPs (SSRF guard).
+fn is_private_ip(ip: &std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_unspecified() || v4.octets()[0] == 169 && v4.octets()[1] == 254
+        }
+        std::net::IpAddr::V6(v6) => v6.is_loopback() || v6.is_unspecified(),
+    }
+}
+
 /// IPFS metadata fetcher
 pub struct IpfsMetadataFetcher {
     http_client: reqwest::Client,
@@ -765,8 +775,27 @@ impl MetadataFetcher {
 
     /// Check if URI is blocked
     fn is_uri_blocked(&self, uri: &str) -> bool {
+        // Only https (and ipfs:// handled separately) - block http to prevent MITM downgrade
+        if uri.starts_with("http://") {
+            return true;
+        }
         // Extract domain from URI
         if let Ok(url) = url::Url::parse(uri) {
+            if let Some(host) = url.host_str() {
+                let host_lower = host.to_lowercase();
+                // SSRF: deny private/loopback/link-local/metadata endpoints
+                if host_lower == "localhost"
+                    || host_lower.ends_with(".localhost")
+                    || host_lower == "metadata.google.internal"
+                {
+                    return true;
+                }
+                if let Ok(ip) = host_lower.parse::<std::net::IpAddr>() {
+                    if is_private_ip(&ip) {
+                        return true;
+                    }
+                }
+            }
             let domain = url.host_str().unwrap_or("");
             
             // Check blocked domains
@@ -778,9 +807,26 @@ impl MetadataFetcher {
             if uri.contains("bit.ly") || uri.contains("tinyurl.com") || uri.contains("t.co") {
                 return true; // URL shorteners are often used for phishing
             }
+        } else {
+            // Unparseable URI: block unless it's ipfs:// handled by dedicated fetcher
+            if !uri.starts_with("ipfs://") {
+                return true;
+            }
         }
         
         false
+    }
+
+    /// Validate IPFS hash format (base58/cid, no path traversal)
+    fn validate_ipfs_hash(hash: &str) -> bool {
+        let hash = hash.split('?').next().unwrap_or("").split('#').next().unwrap_or("");
+        if hash.is_empty() || hash.len() > 128 {
+            return false;
+        }
+        if hash.contains("..") || hash.contains('/') || hash.contains('\\') {
+            return false;
+        }
+        hash.chars().all(|c| c.is_alphanumeric())
     }
 
     /// Get appropriate fetch strategy for URI
@@ -954,6 +1000,13 @@ impl HttpMetadataFetcher {
 #[async_trait]
 impl MetadataFetchStrategy for HttpMetadataFetcher {
     async fn fetch_metadata(&self, uri: &str) -> NftResult<Value> {
+        if !uri.starts_with("https://") {
+            return Err(NftError::Validation {
+                message: "Only https metadata URIs allowed".to_string(),
+                field: Some("metadata_uri".to_string()),
+                value: None,
+            });
+        }
         let response = self.http_client.get(uri).send().await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to fetch metadata: {}", e),
@@ -967,7 +1020,29 @@ impl MetadataFetchStrategy for HttpMetadataFetcher {
             });
         }
 
-        let metadata: Value = response.json().await
+        // Enforce size cap before JSON parsing (DoS guard)
+        if let Some(len) = response.content_length() {
+            if len > self.config.max_metadata_size_bytes as u64 {
+                return Err(NftError::Validation {
+                    message: format!("Metadata too large: {} bytes", len),
+                    field: Some("metadata_uri".to_string()),
+                    value: None,
+                });
+            }
+        }
+        let bytes = response.bytes().await
+            .map_err(|e| NftError::Network {
+                message: format!("Failed to read metadata body: {}", e),
+                source_info: Some("http".to_string()),
+            })?;
+        if bytes.len() > self.config.max_metadata_size_bytes {
+            return Err(NftError::Validation {
+                message: format!("Metadata too large: {} bytes", bytes.len()),
+                field: Some("metadata_uri".to_string()),
+                value: None,
+            });
+        }
+        let metadata: Value = serde_json::from_slice(&bytes)
             .map_err(|e| NftError::Serialization {
                 message: format!("Failed to parse JSON metadata: {}", e),
                 format: Some("json".to_string()),
@@ -1010,7 +1085,7 @@ impl IpfsMetadataFetcher {
 impl MetadataFetchStrategy for IpfsMetadataFetcher {
     async fn fetch_metadata(&self, uri: &str) -> NftResult<Value> {
         // Extract IPFS hash from URI
-        let ipfs_hash = if uri.starts_with("ipfs://") {
+        let raw_hash = if uri.starts_with("ipfs://") {
             uri.strip_prefix("ipfs://").unwrap_or("")
         } else if uri.contains("/ipfs/") {
             uri.split("/ipfs/").nth(1).unwrap_or("")
@@ -1021,6 +1096,18 @@ impl MetadataFetchStrategy for IpfsMetadataFetcher {
                 value: Some(uri.to_string()),
             });
         };
+        // Strip query/fragment, validate charset (no traversal)
+        let ipfs_hash = raw_hash.split('?').next().unwrap_or("").split('#').next().unwrap_or("");
+        if ipfs_hash.is_empty() || ipfs_hash.len() > 128
+            || ipfs_hash.contains("..") || ipfs_hash.contains('/') || ipfs_hash.contains('\\')
+            || !ipfs_hash.chars().all(|c| c.is_alphanumeric())
+        {
+            return Err(NftError::Validation {
+                message: "Invalid IPFS hash format".to_string(),
+                field: Some("metadata_uri".to_string()),
+                value: None,
+            });
+        }
 
         // Try different gateways
         for gateway in &self.ipfs_gateways {
@@ -1029,7 +1116,19 @@ impl MetadataFetchStrategy for IpfsMetadataFetcher {
             match self.http_client.get(&full_uri).send().await {
                 Ok(response) => {
                     if response.status().is_success() {
-                        let metadata: Value = response.json().await
+                        if let Some(len) = response.content_length() {
+                            if len > self.config.max_metadata_size_bytes as u64 {
+                                continue;
+                            }
+                        }
+                        let bytes = match response.bytes().await {
+                            Ok(b) => b,
+                            Err(_) => continue,
+                        };
+                        if bytes.len() > self.config.max_metadata_size_bytes {
+                            continue;
+                        }
+                        let metadata: Value = serde_json::from_slice(&bytes)
                             .map_err(|e| NftError::Serialization {
                                 message: format!("Failed to parse JSON metadata: {}", e),
                                 format: Some("json".to_string()),
@@ -1087,7 +1186,28 @@ impl MetadataFetchStrategy for ArweaveMetadataFetcher {
             });
         }
 
-        let metadata: Value = response.json().await
+        if let Some(len) = response.content_length() {
+            if len > self.config.max_metadata_size_bytes as u64 {
+                return Err(NftError::Validation {
+                    message: format!("Arweave metadata too large: {} bytes", len),
+                    field: Some("metadata_uri".to_string()),
+                    value: None,
+                });
+            }
+        }
+        let bytes = response.bytes().await
+            .map_err(|e| NftError::Network {
+                message: format!("Failed to read Arweave body: {}", e),
+                source_info: Some("arweave".to_string()),
+            })?;
+        if bytes.len() > self.config.max_metadata_size_bytes {
+            return Err(NftError::Validation {
+                message: format!("Arweave metadata too large: {} bytes", bytes.len()),
+                field: Some("metadata_uri".to_string()),
+                value: None,
+            });
+        }
+        let metadata: Value = serde_json::from_slice(&bytes)
             .map_err(|e| NftError::Serialization {
                 message: format!("Failed to parse Arweave JSON metadata: {}", e),
                 format: Some("json".to_string()),

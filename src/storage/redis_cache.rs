@@ -75,7 +75,7 @@ impl RedisCacheManager {
         let _: String = cmd("PING").query_async(&mut conn).await
             .map_err(|e| SolanaRecoverError::DatabaseError(format!("Redis ping failed: {}", e)))?;
         
-        info!("Connected to Redis at {}", redis_url);
+        info!("Connected to Redis at {}", redact_redis_url(&redis_url));
         
         Ok(Self {
             client: Arc::new(client),
@@ -316,6 +316,18 @@ impl Drop for RedisCacheManager {
     fn drop(&mut self) {
         // Note: Redis connections are automatically dropped when they go out of scope
         debug!("RedisCacheManager dropped");
+    }
+}
+
+/// Redact credentials from a Redis URL for safe logging (keeps scheme + host).
+fn redact_redis_url(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut parsed) => {
+            let _ = parsed.set_password(None);
+            parsed.set_username("").ok();
+            parsed.to_string()
+        }
+        Err(_) => "redis://<redacted>".to_string(),
     }
 }
 

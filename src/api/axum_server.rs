@@ -218,6 +218,10 @@ pub async fn start_server(
                 .layer(TraceLayer::new_for_http())
                 .layer(CompressionLayer::new())
                 .layer(crate::api::middleware::cors_layer())
+                // NOTE: auth/rate-limit (`security_middleware`) must be fronted
+                // by a reverse proxy or added here with shared SecurityMiddleware
+                // state before exposing /api/v1/recover publicly.
+                .layer(axum::middleware::from_fn(crate::api::middleware::request_id_middleware))
         )
         .with_state(state_with_metrics);
 
@@ -312,7 +316,11 @@ async fn scan_wallet(
 ) -> std::result::Result<Json<ApiResponse<ScanResult>>, StatusCode> {
     let start_time = std::time::Instant::now();
     
-    info!("Scanning wallet: {}", request.wallet_address);
+    if let Err(e) = crate::utils::validation::InputValidator::validate_wallet_address(&request.wallet_address) {
+        error!("Invalid scan request: {}", e);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    debug!("Scanning wallet request received");
     
     match state.scanner.scan_wallet(&request.wallet_address).await {
         Ok(result) => {
@@ -339,8 +347,19 @@ async fn batch_scan(
     Json(request): Json<BatchScanRequest>,
 ) -> std::result::Result<Json<ApiResponse<crate::core::BatchScanResult>>, StatusCode> {
     let start_time = std::time::Instant::now();
+
+    if request.wallet_addresses.is_empty() || request.wallet_addresses.len() > 100 {
+        error!("Invalid batch size: {}", request.wallet_addresses.len());
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    for addr in &request.wallet_addresses {
+        if let Err(e) = crate::utils::validation::InputValidator::validate_wallet_address(addr) {
+            error!("Invalid wallet in batch: {}", e);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
     
-    info!("Starting batch scan: {} wallets", request.wallet_addresses.len());
+    debug!("Starting batch scan: {} wallets", request.wallet_addresses.len());
     
     match state.batch_processor.process_batch(&request).await {
         Ok(result) => {
@@ -379,8 +398,20 @@ async fn recover_sol(
     Json(request): Json<RecoveryRequest>,
 ) -> crate::core::Result<Json<ApiResponse<RecoveryResult>>> {
     let start_time = std::time::Instant::now();
+
+    if let Err(e) = crate::utils::validation::InputValidator::validate_wallet_address(&request.wallet_address) {
+        error!("Invalid recovery wallet: {}", e);
+        return Err(SolanaRecoverError::InvalidInput("Invalid wallet address".to_string()));
+    }
+    if let Err(e) = crate::utils::validation::InputValidator::validate_destination_address(&request.destination_address) {
+        error!("Invalid recovery destination: {}", e);
+        return Err(SolanaRecoverError::InvalidInput("Invalid destination address".to_string()));
+    }
+    if request.empty_accounts.is_empty() || request.empty_accounts.len() > 100 {
+        return Err(SolanaRecoverError::InvalidInput("empty_accounts must be 1-100 items".to_string()));
+    }
     
-    info!("Starting SOL recovery for wallet: {}", request.wallet_address);
+    debug!("Starting SOL recovery request");
     
     match state.recovery_manager.recover_sol(&request).await {
         Ok(result) => {
@@ -420,8 +451,12 @@ async fn estimate_fees(
     Json(accounts): Json<Vec<String>>,
 ) -> crate::core::Result<Json<ApiResponse<u64>>> {
     let start_time = std::time::Instant::now();
+
+    if accounts.is_empty() || accounts.len() > 100 {
+        return Err(SolanaRecoverError::InvalidInput("accounts must be 1-100 items".to_string()));
+    }
     
-    info!("Estimating fees for {} accounts", accounts.len());
+    debug!("Estimating fees for {} accounts", accounts.len());
     
     match state.recovery_manager.estimate_recovery_fees(&accounts).await {
         Ok(fees) => {

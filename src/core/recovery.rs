@@ -324,12 +324,19 @@ impl RecoveryManager {
         // For private key wallets, the destination should be the wallet address
         // Use destination as wallet public key for simplicity
         let wallet_pubkey = destination;
-        
+
+        // Fetch once and reuse for both instruction building and signer collection
+        // (previously fetched twice per batch).
+        let mut cached_infos: Vec<(Pubkey, Option<solana_account_decoder::UiAccount>)> = Vec::with_capacity(account_pubkeys.len());
         for chunk in account_pubkeys.chunks(batch_size) {
             let account_infos = rpc_client.get_multiple_accounts(chunk).await?;
-            
-            for (account_pubkey, account_info_opt) in chunk.iter().zip(account_infos) {
-                if let Some(account_info) = account_info_opt {
+            for (pk, info) in chunk.iter().zip(account_infos) {
+                cached_infos.push((*pk, info));
+            }
+        }
+        
+        for (account_pubkey, account_info_opt) in &cached_infos {
+            if let Some(account_info) = account_info_opt {
                     // Parse owner as Pubkey
                     let owner_pubkey = account_info.owner.parse::<Pubkey>()
                         .map_err(|_| SolanaRecoverError::InvalidInput(
@@ -377,7 +384,6 @@ impl RecoveryManager {
                         }
                     }
                 }
-            }
         }
 
         if instructions.is_empty() {
@@ -389,12 +395,9 @@ impl RecoveryManager {
         // Create transaction with fee payer and required signers
         let mut required_signers = vec![wallet_pubkey]; // Always include wallet as signer
         
-        // Add unique account owners as additional signers for token accounts
-        for chunk in account_pubkeys.chunks(batch_size) {
-            let account_infos = rpc_client.get_multiple_accounts(chunk).await?;
-            
-            for (_account_pubkey, account_info_opt) in chunk.iter().zip(account_infos) {
-                if let Some(account_info) = account_info_opt {
+        // Reuse already-fetched account infos (no second RPC round-trip)
+        for (_account_pubkey, account_info_opt) in &cached_infos {
+            if let Some(account_info) = account_info_opt {
                     // Parse owner as Pubkey
                     let owner_pubkey = account_info.owner.parse::<Pubkey>()
                         .map_err(|_| SolanaRecoverError::InvalidInput(
@@ -406,7 +409,6 @@ impl RecoveryManager {
                         && owner_pubkey != wallet_pubkey {
                         required_signers.push(owner_pubkey);
                     }
-                }
             }
         }
         
@@ -684,41 +686,34 @@ impl RecoveryManager {
         let mut total_balance = 0u64;
         let mut valid_accounts = 0u64;
 
-        for account_address in accounts {
-            let pubkey = account_address.parse::<Pubkey>()
-                .map_err(|_| SolanaRecoverError::InvalidInput(
-                    format!("Invalid account address: {}", account_address)
-                ))?;
+        // Parse all pubkeys first (fail fast on invalid input)
+        let pubkeys: Vec<Pubkey> = accounts.iter()
+            .map(|a| a.parse::<Pubkey>().map_err(|_| SolanaRecoverError::InvalidInput(
+                format!("Invalid account address: {}", a)
+            )))
+            .collect::<Result<Vec<_>>>()?;
 
-            // Get account info with commitment level
-            let account = rpc_client.get_account_info(&pubkey).await?;
-            
-            // Parse owner as Pubkey
-            let owner_pubkey = account.owner.parse::<Pubkey>()
-                .map_err(|_| SolanaRecoverError::InvalidInput(
-                    format!("Invalid owner pubkey: {}", account.owner)
-                ))?;
-            
-            // Calculate recoverable amount based on account type
-            let recoverable_amount = if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
-                // For token accounts: recover FULL balance (including rent exemption)
-                // This fixes the "Zero Reporting Bug" - we count everything for token accounts
-                account.lamports
-            } else {
-                // For system accounts: only recover amount above rent exemption
-                let rent_exemption = rpc_client.get_minimum_balance_for_rent_exemption(165).await
-                    .unwrap_or(2_039_280); // Fallback to common value
-                
-                if account.lamports > rent_exemption {
-                    account.lamports - rent_exemption
+        // Single rent query, then batched account fetch (was N sequential RPCs)
+        let rent_exemption = rpc_client.get_minimum_balance_for_rent_exemption(165).await
+            .unwrap_or(2_039_280);
+        for chunk in pubkeys.chunks(100) {
+            let infos = rpc_client.get_multiple_accounts(chunk).await?;
+            for account_opt in infos.into_iter().flatten() {
+                let owner_pubkey = account_opt.owner.parse::<Pubkey>()
+                    .map_err(|_| SolanaRecoverError::InvalidInput(
+                        format!("Invalid owner pubkey: {}", account_opt.owner)
+                    ))?;
+                let recoverable_amount = if owner_pubkey == spl_token::id() || owner_pubkey == spl_token_2022::id() {
+                    account_opt.lamports
+                } else if account_opt.lamports > rent_exemption {
+                    account_opt.lamports - rent_exemption
                 } else {
                     0
+                };
+                if recoverable_amount >= self.config.min_balance_lamports {
+                    total_balance += recoverable_amount;
+                    valid_accounts += 1;
                 }
-            };
-            
-            if recoverable_amount >= self.config.min_balance_lamports {
-                total_balance += recoverable_amount;
-                valid_accounts += 1;
             }
         }
 
