@@ -468,7 +468,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut successful_scans = 0;
 
             for (i, wallet) in wallets.iter().enumerate() {
-                let wallet_display = if true { wallet.clone() } else { "[wallet address hidden]".to_string() };
+                let wallet_display = wallet.clone();
                 print!("Scanning NFTs for wallet {}/{}: {} ... ", i + 1, wallets.len(), wallet_display);
                 io::stdout().flush()?;
 
@@ -1060,11 +1060,11 @@ fn print_total_claim_result_unified(result: &UnifiedTotalClaimResult, dev: bool)
         }
     }
     
-    let has_recoverable_assets = result.total_recoverable_sol > 0.0;
     #[cfg(feature = "nft")]
-    {
-        has_recoverable_assets = has_recoverable_assets || result.total_nft_value_lamports > 0;
-    }
+    let has_recoverable_assets = result.total_recoverable_sol > 0.0
+        || result.total_nft_value_lamports > 0;
+    #[cfg(not(feature = "nft"))]
+    let has_recoverable_assets = result.total_recoverable_sol > 0.0;
     
     if has_recoverable_assets {
         println!();
