@@ -10,7 +10,6 @@ use governor::{
     state::{InMemoryState, NotKeyed},
     Quota, RateLimiter,
 };
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use tracing::{debug, warn, info};
 use serde::{Deserialize, Serialize};

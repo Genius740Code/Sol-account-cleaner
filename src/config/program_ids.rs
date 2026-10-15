@@ -19,8 +19,10 @@ impl Default for ProgramIds {
                 .expect("Invalid default OpenBook V2 program ID"),
             serum_dex: Pubkey::from_str("srmqPvvk92GzrcCbKgSGx3mFHTEQuoE3jUuAM6gEKrP")
                 .expect("Invalid default Serum DEX program ID"),
-            token_program: spl_token::id(),
-            token_2022_program: spl_token_2022::id(),
+            token_program: Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+                .expect("Invalid default Token program ID"),
+            token_2022_program: Pubkey::from_str("TokenzQdBNbLqP5VEhdk8ir6sZL8TPnq7Xy8YZ6Gv")
+                .expect("Invalid default Token-2022 program ID"),
         }
     }
 }
@@ -43,13 +45,15 @@ impl ProgramIds {
         let token_program_pubkey = match token_program {
             Some(id) => Pubkey::from_str(id)
                 .map_err(|_| SolanaRecoverError::InvalidInput("Invalid Token program ID".to_string()))?,
-            None => spl_token::id(),
+            None => Pubkey::from_str(&spl_token::id().to_string())
+                .map_err(|_| SolanaRecoverError::InvalidInput("Invalid Token program ID".to_string()))?,
         };
         
         let token_2022_program_pubkey = match token_2022_program {
             Some(id) => Pubkey::from_str(id)
                 .map_err(|_| SolanaRecoverError::InvalidInput("Invalid Token-2022 program ID".to_string()))?,
-            None => spl_token_2022::id(),
+            None => Pubkey::from_str(&spl_token_2022::id().to_string())
+                .map_err(|_| SolanaRecoverError::InvalidInput("Invalid Token-2022 program ID".to_string()))?,
         };
         
         let program_ids = Self {
@@ -87,8 +91,9 @@ impl ProgramIds {
             ));
         }
         
-        // Validate Token program (use dynamic function)
-        if self.token_program != spl_token::id() {
+        // Validate Token program (use dynamic function; compare by string
+        // since spl-token may re-export a different solana pubkey version)
+        if self.token_program.to_string() != spl_token::id().to_string() {
             return Err(SolanaRecoverError::SecurityError(
                 format!("Token program ID mismatch. Expected: {}, Got: {}", 
                     spl_token::id(), self.token_program)
@@ -96,7 +101,7 @@ impl ProgramIds {
         }
         
         // Validate Token-2022 program (use dynamic function)
-        if self.token_2022_program != spl_token_2022::id() {
+        if self.token_2022_program.to_string() != spl_token_2022::id().to_string() {
             return Err(SolanaRecoverError::SecurityError(
                 format!("Token-2022 program ID mismatch. Expected: {}, Got: {}", 
                     spl_token_2022::id(), self.token_2022_program)

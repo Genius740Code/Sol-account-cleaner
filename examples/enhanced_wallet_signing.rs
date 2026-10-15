@@ -69,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &connection.id,
         &transaction_bytes,
         Some("demo_user".to_string()),
+        None,
     ).await {
         Ok(signed_tx) => {
             println!("Transaction signed successfully!");
@@ -198,6 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &connection.id,
             &transaction_bytes,
             Some("demo_user".to_string()),
+            None,
         ).await {
             Ok(_) => println!("  Attempt {}: Success", i),
             Err(e) => println!("  Attempt {}: Failed - {}", i, e),

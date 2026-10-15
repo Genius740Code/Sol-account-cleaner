@@ -233,13 +233,16 @@ impl WalletScanner {
         
         debug!("Found {} unique accounts after deduplication", unique_accounts.len());
 
-        // Bounded parallel account checking (max 20 concurrent to avoid RPC storms)
-        use futures::StreamExt;
-        let results: Vec<_> = futures::stream::iter(unique_accounts.iter())
-            .map(|account| self.check_empty_account(account, wallet_address))
-            .buffer_unordered(20)
-            .collect()
-            .await;
+        // Bounded parallel account checking (chunks of 20 to avoid RPC storms;
+        // chunked join_all keeps futures concrete and avoids async-trait lifetime issues)
+        let mut results = Vec::with_capacity(unique_accounts.len());
+        for chunk in unique_accounts.chunks(20) {
+            let check_futures: Vec<_> = chunk
+                .iter()
+                .map(|account| self.check_empty_account(account, wallet_address))
+                .collect();
+            results.extend(futures::future::join_all(check_futures).await);
+        }
         
         for result in results {
             match result {

@@ -12,10 +12,11 @@ use axum::{
 };
 use base64::Engine;
 use serde::{Deserialize, Serialize};
-use solana_recover::{
+use solana_recover::wallet::{
     WalletManager, WalletCredentials, WalletType, WalletCredentialData,
-    TurnkeyProvider, TurnkeyConfig, WalletConnection
+    WalletConnection, WalletProvider,
 };
+use solana_recover::wallet::turnkey::{TurnkeyProvider, TurnkeyConfig};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{info, warn, error};
@@ -136,6 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let turnkey_config = TurnkeyConfig {
         api_url: std::env::var("TURNKEY_API_URL")
             .unwrap_or_else(|_| "https://api.turnkey.com".to_string()),
+        api_key: std::env::var("TURNKEY_API_KEY").ok(),
         timeout_seconds: std::env::var("TURNKEY_TIMEOUT_SECONDS")
             .unwrap_or_else(|_| "30".to_string())
             .parse()
@@ -148,6 +150,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or_else(|_| "true".to_string())
             .parse()
             .unwrap_or(true),
+        certificate_pinning: true,
+        allowed_origins: vec!["https://api.turnkey.com".to_string()],
     };
 
     let turnkey_provider = Arc::new(TurnkeyProvider::with_config(turnkey_config));
@@ -257,7 +261,7 @@ async fn connect_wallet(
             match state.turnkey_provider.get_public_key(&connection).await {
                 Ok(public_key) => {
                     let response = ConnectResponse {
-                        connection_id: connection.id,
+                        connection_id: connection.id.clone(),
                         public_key: public_key.clone(),
                         wallet_address: public_key,
                     };
@@ -342,7 +346,7 @@ async fn sign_transaction(
         };
 
         // Sign transaction
-        match state.turnkey_provider.sign_transaction(&connection, &transaction).await {
+        match state.turnkey_provider.sign_transaction(&connection, &transaction, None).await {
             Ok(signed_transaction) => {
                 // Extract signature (first 64 bytes)
                 if signed_transaction.len() < 64 {

@@ -125,6 +125,8 @@ impl PerformanceBenchmark {
             scan_timeout: Duration::from_secs(300),
             prefetch_window_size: 1000,
             batch_size_multiplier: 1.5,
+            avg_network_latency_ms: 0.0,
+            recent_success_rate: 1.0,
         };
 
         Ok(Arc::new(OptimizedWalletScanner::new(endpoints, config)?))

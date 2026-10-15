@@ -99,6 +99,13 @@ impl AuditEntry {
 
     /// Get the data that should be signed (everything except the signature)
     fn get_signable_data(&self) -> String {
+        let result_str = match &self.result {
+            OperationResult::Success => "success".to_string(),
+            OperationResult::Failure => "failure".to_string(),
+            OperationResult::Error(msg) => format!("error:{}", msg),
+            OperationResult::RateLimited => "rate_limited".to_string(),
+            OperationResult::Unauthorized => "unauthorized".to_string(),
+        };
         format!(
             "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             self.id,
@@ -107,13 +114,7 @@ impl AuditEntry {
             self.user_id.as_deref().unwrap_or(""),
             self.wallet_address.as_deref().unwrap_or(""),
             self.amount.unwrap_or(0),
-            match &self.result {
-                OperationResult::Success => "success",
-                OperationResult::Failure => "failure",
-                OperationResult::Error(msg) => &format!("error:{}", msg),
-                OperationResult::RateLimited => "rate_limited",
-                OperationResult::Unauthorized => "unauthorized",
-            },
+            result_str,
             self.ip_address.as_deref().unwrap_or(""),
             self.user_agent.as_deref().unwrap_or(""),
             self.request_id.as_deref().unwrap_or("")

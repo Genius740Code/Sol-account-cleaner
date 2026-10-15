@@ -541,6 +541,7 @@ impl BatchRpcOperations for RpcClientWrapper {
                         min_context_slot: None,
                     },
                     with_context: None,
+                    sort_results: None,
                 },
             ).map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
             
@@ -591,6 +592,7 @@ impl BatchRpcOperations for RpcClientWrapper {
                     min_context_slot: None,
                 },
                 with_context: None,
+                sort_results: None,
             },
         ).map_err(|e| SolanaRecoverError::RpcError(e.to_string()))?;
         

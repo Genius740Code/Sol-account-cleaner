@@ -136,6 +136,7 @@ impl RpcClientWrapper {
                 min_context_slot: None,
             },
             with_context: Some(false),
+            sort_results: None,
         };
         
         // Rate limit check
@@ -159,7 +160,7 @@ impl RpcClientWrapper {
         let keyed_accounts: Vec<solana_client::rpc_response::RpcKeyedAccount> = accounts.into_iter()
             .map(|(pubkey, account)| solana_client::rpc_response::RpcKeyedAccount {
                 pubkey: pubkey.to_string(),
-                account: solana_account_decoder::UiAccount::encode(
+                account: solana_account_decoder::encode_ui_account(
                     &pubkey,
                     &account,
                     solana_account_decoder::UiAccountEncoding::Binary,
@@ -232,6 +233,7 @@ impl RpcClientWrapper {
                     min_context_slot: None,
                 },
                 with_context: None,
+                sort_results: None,
             };
             
             tokio::time::timeout(self.request_timeout,
@@ -259,6 +261,7 @@ impl RpcClientWrapper {
                     min_context_slot: None,
                 },
                 with_context: None,
+                sort_results: None,
             };
             
             tokio::time::timeout(self.request_timeout,

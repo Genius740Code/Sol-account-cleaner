@@ -105,6 +105,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 maximum_lamports: Some(10_000_000),
                 waive_below_lamports: Some(5_000_000),
                 firm_wallet_address: None,
+                authorized_firm_wallets: Vec::new(),
             };
             
             let mut total_recoverable = 0.0;

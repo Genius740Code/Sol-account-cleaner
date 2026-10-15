@@ -153,7 +153,7 @@ impl BatchProcessor {
                                 let _permit = semaphore.acquire().await.map_err(|_| SolanaRecoverError::ConnectionPoolExhausted)?;
                                 scanner.scan_wallet(&wallet_addr).await
                             });
-                            tasks.push((wallet_addr, task));
+                            tasks.push((wallet_address.clone(), task));
                         }
                         
                         // Wait for all tasks in this chunk

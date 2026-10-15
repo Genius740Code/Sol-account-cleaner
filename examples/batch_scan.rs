@@ -3,7 +3,10 @@
 //! This example demonstrates how to scan multiple wallets efficiently
 //! using the batch processing capabilities of the solana-recover crate.
 
-use solana_recover::{BatchProcessor, BatchScanRequest};
+use solana_recover::{BatchProcessor, BatchScanRequest, ScanStatus};
+use solana_recover::core::types::RpcEndpoint;
+use solana_recover::rpc::ConnectionPool;
+use std::sync::Arc;
 use std::env;
 
 #[tokio::main]
@@ -45,20 +48,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Fee percentage: {:.1}%", fee_percentage * 100.0);
     println!();
     
-    // Create batch processor
-    let processor = BatchProcessor::new().await?;
+    // Create batch processor (simple mode: default mainnet endpoint)
+    let rpc_endpoint = RpcEndpoint {
+        url: solana_recover::DEFAULT_MAINNET_ENDPOINT.to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: 30000,
+        healthy: true,
+    };
+    let pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], 8));
+    let processor = BatchProcessor::new_simple(pool, 10);
     
     // Create batch request
     let request = BatchScanRequest {
+        id: uuid::Uuid::new_v4(),
         wallet_addresses,
+        user_id: None,
         fee_percentage: Some(fee_percentage),
+        created_at: chrono::Utc::now(),
     };
     
     println!("Starting batch scan...");
     let start_time = std::time::Instant::now();
     
     // Process batch
-    let results = processor.process_batch(request).await?;
+    let results = processor.process_batch(&request).await?;
     
     let elapsed = start_time.elapsed();
     
@@ -67,34 +81,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Display results
     let mut total_recoverable = 0.0;
-    let mut total_empty_accounts = 0;
+    let mut total_empty_accounts: u64 = 0;
     let mut successful_scans = 0;
     
     println!("Scan Results Summary:");
     println!("  Total wallets: {}", results.results.len());
-    println!("  Successful scans: {}", results.results.iter().filter(|r| r.result.is_ok()).count());
-    println!("  Failed scans: {}", results.results.iter().filter(|r| r.result.is_err()).count());
+    println!("  Successful scans: {}", results.results.iter().filter(|r| r.status == ScanStatus::Completed).count());
+    println!("  Failed scans: {}", results.results.iter().filter(|r| r.status == ScanStatus::Failed).count());
     println!();
     
     println!("Detailed Results:");
     for (i, scan_result) in results.results.iter().enumerate() {
         match &scan_result.result {
-            Ok(result) => {
+            Some(result) => {
                 successful_scans += 1;
                 total_recoverable += result.recoverable_sol;
-                total_empty_accounts += result.empty_accounts.len();
+                total_empty_accounts += result.empty_accounts;
                 
                 println!("  {}. ✓ {} - {:.9} SOL recoverable ({} empty accounts)", 
                          i + 1, 
                          scan_result.wallet_address,
                          result.recoverable_sol,
-                         result.empty_accounts.len());
+                         result.empty_accounts);
             }
-            Err(e) => {
+            None => {
                 println!("  {}. ✗ {} - Error: {}", 
                          i + 1, 
                          scan_result.wallet_address,
-                         e);
+                         scan_result.error_message.as_deref().unwrap_or("unknown"));
             }
         }
     }

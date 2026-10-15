@@ -13,7 +13,7 @@ use solana_recover::wallet::turnkey::{TurnkeyProvider, TurnkeyConfig};
 use std::sync::Arc;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     tracing_subscriber::fmt::init();
 
@@ -22,9 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Create Turnkey provider with custom configuration
     let turnkey_config = TurnkeyConfig {
         api_url: "https://api.turnkey.com".to_string(),
+        api_key: None,
         timeout_seconds: 30,
         retry_attempts: 3,
         enable_session_caching: true,
+        certificate_pinning: true,
+        allowed_origins: vec!["https://api.turnkey.com".to_string()],
     };
 
     let turnkey_provider = Arc::new(TurnkeyProvider::with_config(turnkey_config));
@@ -34,14 +37,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match turnkey_provider.health_check().await {
         Ok(is_healthy) => {
             if is_healthy {
-                println!("   Turnkey service is healthy! \u2713");
+                println!("   Turnkey service is healthy! \u{2713}");
             } else {
-                println!("   Turnkey service is unhealthy! \u2717");
-                return Err("Turnkey service is unhealthy".into());
+                println!("   Turnkey service is unhealthy! \u{2717}");
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "Turnkey service is unhealthy").into());
             }
         }
         Err(e) => {
-            println!("   Health check failed: {} \u2717", e);
+            println!("   Health check failed: {} \u{2717}", e);
             return Err(e.into());
         }
     }
@@ -61,12 +64,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Connect to wallet (with session caching)
     let connection = match turnkey_provider.connect(&credentials).await {
         Ok(conn) => {
-            println!("   Successfully connected to Turnkey wallet! \u2713");
+            println!("   Successfully connected to Turnkey wallet! \u{2713}");
             println!("   Connection ID: {}", conn.id);
             conn
         }
         Err(e) => {
-            println!("   Failed to connect: {} \u2717", e);
+            println!("   Failed to connect: {} \u{2717}", e);
             println!("   (Expected with demo credentials)");
             return Err(e.into());
         }
@@ -76,10 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n3. Retrieving public key...");
     match turnkey_provider.get_public_key(&connection).await {
         Ok(public_key) => {
-            println!("   Public key: {} \u2713", public_key);
+            println!("   Public key: {} \u{2713}", public_key);
         }
         Err(e) => {
-            println!("   Failed to get public key: {} \u2717", e);
+            println!("   Failed to get public key: {} \u{2717}", e);
         }
     }
 
@@ -99,9 +102,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Second connection time: {:?}", second_connect_time);
 
     if second_connect_time < first_connect_time {
-        println!("   Session caching working! \u2713");
+        println!("   Session caching working! \u{2713}");
     } else {
-        println!("   Session caching may not be working \u2717");
+        println!("   Session caching may not be working \u{2717}");
     }
 
     // 7. Check cache statistics
@@ -117,20 +120,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // In reality, this would be a serialized Solana transaction
     ];
 
-    match turnkey_provider.sign_transaction(&connection, &sample_transaction).await {
+    match turnkey_provider.sign_transaction(&connection, &sample_transaction, None).await {
         Ok(signed_tx) => {
-            println!("   Transaction signed successfully! \u2713");
+            println!("   Transaction signed successfully! \u{2713}");
             println!("   Signed transaction length: {} bytes", signed_tx.len());
             
             // Verify signature format (should be 64 bytes signature + transaction)
             if signed_tx.len() == sample_transaction.len() + 64 {
-                println!("   Signature format correct \u2713");
+                println!("   Signature format correct \u{2713}");
             } else {
-                println!("   Signature format incorrect \u2717");
+                println!("   Signature format incorrect \u{2717}");
             }
         }
         Err(e) => {
-            println!("   Failed to sign transaction: {} \u2717", e);
+            println!("   Failed to sign transaction: {} \u{2717}", e);
             println!("   (Expected with demo credentials)");
         }
     }
@@ -143,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect using WalletManager
     match wallet_manager.connect_wallet(credentials.clone()).await {
         Ok(manager_connection) => {
-            println!("   Connected via WalletManager! \u2713");
+            println!("   Connected via WalletManager! \u{2713}");
             println!("   Connection ID: {}", manager_connection.id);
             
             // List active connections
@@ -152,10 +155,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // Disconnect
             wallet_manager.disconnect_wallet(&manager_connection.id).await?;
-            println!("   Disconnected successfully \u2713");
+            println!("   Disconnected successfully \u{2713}");
         }
         Err(e) => {
-            println!("   WalletManager connection failed: {} \u2717", e);
+            println!("   WalletManager connection failed: {} \u{2717}", e);
         }
     }
 
@@ -174,10 +177,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match turnkey_provider.connect(&invalid_credentials).await {
         Ok(_) => {
-            println!("   Unexpected success with invalid credentials \u2717");
+            println!("   Unexpected success with invalid credentials \u{2717}");
         }
         Err(e) => {
-            println!("   Properly rejected invalid credentials \u2713");
+            println!("   Properly rejected invalid credentials \u{2713}");
         }
     }
 
@@ -193,23 +196,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n9. Disconnecting...");
     match turnkey_provider.disconnect(&connection).await {
         Ok(_) => {
-            println!("   Disconnected successfully! \u2713");
+            println!("   Disconnected successfully! \u{2713}");
         }
         Err(e) => {
-            println!("   Disconnect failed: {} \u2717", e);
+            println!("   Disconnect failed: {} \u{2717}", e);
         }
     }
 
     println!("\n=== Turnkey Integration Test Complete ===");
     println!("\nKey Features Demonstrated:");
-    println!("\u2713 Health checks");
-    println!("\u2713 Session management and caching");
-    println!("\u2713 Retry logic with exponential backoff");
-    println!("\u2713 Transaction signing");
-    println!("\u2713 Error handling");
-    println!("\u2713 WalletManager integration");
-    println!("\u2713 Cache management");
-    println!("\u2713 Connection lifecycle management");
+    println!("\u{2713} Health checks");
+    println!("\u{2713} Session management and caching");
+    println!("\u{2713} Retry logic with exponential backoff");
+    println!("\u{2713} Transaction signing");
+    println!("\u{2713} Error handling");
+    println!("\u{2713} WalletManager integration");
+    println!("\u{2713} Cache management");
+    println!("\u{2713} Connection lifecycle management");
 
     Ok(())
 }

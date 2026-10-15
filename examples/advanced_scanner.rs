@@ -3,7 +3,9 @@
 //! This example shows how to use the WalletScanner with custom configuration
 //! for optimal performance and advanced features.
 
-use solana_recover::{WalletScanner, ScannerBuilder, UnifiedWalletScanner};
+use solana_recover::{scan_wallet, ScannerBuilder, UnifiedScannerConfig};
+use solana_recover::core::types::RpcEndpoint;
+use solana_recover::rpc::ConnectionPool;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,24 +40,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Create custom scanner using ScannerBuilder
     println!("Initializing scanner with custom configuration...");
+    let rpc_endpoint = RpcEndpoint {
+        url: "https://api.mainnet-beta.solana.com".to_string(),
+        priority: 0,
+        rate_limit_rps: 100,
+        timeout_ms: timeout_seconds * 1000,
+        healthy: true,
+    };
+    let pool = Arc::new(ConnectionPool::new(vec![rpc_endpoint], max_concurrent));
+    let config = UnifiedScannerConfig {
+        max_concurrent_scans: max_concurrent,
+        scan_timeout: Duration::from_secs(timeout_seconds),
+        ..Default::default()
+    };
     let scanner = ScannerBuilder::new()
-        .with_endpoint("https://api.mainnet-beta.solana.com")
-        .with_max_concurrent(max_concurrent)
-        .with_timeout(Duration::from_secs(timeout_seconds))
-        .with_cache(true)
-        .build()
-        .await?;
+        .with_connection_pool(pool)
+        .with_config(config)
+        .build_balanced()?;
     
-    println!("✓ Scanner initialized successfully");
+    println!("✓ Scanner initialized successfully (strategy: {})",
+        scanner.active_strategy_name().unwrap_or("unknown"));
     println!();
     
-    // Perform scan with timeout
+    // Perform scan with timeout (simple scan API)
     println!("Starting wallet scan (with {}s timeout)...", timeout_seconds);
     let start_time = std::time::Instant::now();
     
     let scan_result = timeout(
         Duration::from_secs(timeout_seconds),
-        scanner.scan_wallet(wallet_address)
+        scan_wallet(wallet_address, None)
     ).await;
     
     let elapsed = start_time.elapsed();
@@ -66,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
             println!("Results:");
             println!("  Total Accounts: {}", result.total_accounts);
-            println!("  Empty Accounts: {}", result.empty_accounts.len());
+            println!("  Empty Accounts: {}", result.empty_accounts);
             println!("  Recoverable SOL: {:.9}", result.recoverable_sol);
             println!("  Scan Time: {}ms", result.scan_time_ms);
             println!("  Actual Time: {}ms", elapsed.as_millis());
@@ -75,15 +88,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let accounts_per_second = result.total_accounts as f64 / elapsed.as_secs_f64();
             println!("  Throughput: {:.2} accounts/second", accounts_per_second);
             
-            if !result.empty_accounts.is_empty() {
+            if !result.empty_account_addresses.is_empty() {
                 println!();
                 println!("Empty Accounts Summary:");
-                let total_lamports: u64 = result.empty_accounts.iter()
-                    .map(|acc| acc.lamports)
-                    .sum();
-                println!("  Total lamports in empty accounts: {}", total_lamports);
-                println!("  Average lamports per account: {}", 
-                         total_lamports / result.empty_accounts.len() as u64);
+                println!("  Empty account addresses: {}", result.empty_account_addresses.len());
             }
         }
         Ok(Err(e)) => {
@@ -104,10 +112,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Demonstrate scanner reuse
     println!();
-    println!("Testing scanner reuse with another address...");
+    println!("Testing scan reuse with another address...");
     let test_address = "11111111111111111111111111111112"; // System Program
     
-    match scanner.scan_wallet(test_address).await {
+    match scan_wallet(test_address, None).await {
         Ok(result) => {
             println!("✓ Reuse test successful - {} accounts found", result.total_accounts);
         }
