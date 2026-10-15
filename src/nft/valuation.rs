@@ -4,11 +4,12 @@
 //! multiple valuation methods, real-time data integration, and risk assessment.
 
 use crate::nft::cache::{CacheManager, CacheKey};
-use crate::nft::errors::{NftError, NftResult};
+use crate::nft::errors::{NftError, NftResult, RiskLevel};
 use crate::nft::types::*;
 use crate::rpc::ConnectionPool;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use futures::StreamExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -129,7 +130,7 @@ pub struct ValuationMetrics {
     pub avg_valuation_time_ms: Arc<std::sync::atomic::AtomicU64>,
     
     /// Average confidence score
-    pub avg_confidence_score: Arc<std::sync::atomic::AtomicF64>,
+    pub avg_confidence_score: Arc<AtomicF64>,
     
     /// Valuations by method
     pub valuations_by_method: Arc<DashMap<ValuationMethod, u64>>,
@@ -459,6 +460,7 @@ impl ValuationEngine {
 
         // Calculate valuations using all applicable strategies
         let mut strategy_results = Vec::new();
+        let mut primary_method: Option<ValuationMethod> = None;
         let mut total_weight = 0.0f64;
         let mut weighted_value = 0.0f64;
         let mut total_confidence = 0.0f64;
@@ -467,16 +469,18 @@ impl ValuationEngine {
             if strategy.can_handle(nft) {
                 match strategy.calculate_value(nft, &market_data).await {
                     Ok(result) => {
+                        if primary_method.is_none() {
+                            primary_method = Some(strategy.method());
+                        }
                         let weight = self.config.method_weights.get(&strategy.method()).unwrap_or(&1.0);
                         weighted_value += result.value as f64 * weight;
                         total_weight += weight;
                         total_confidence += result.confidence * weight;
                         strategy_results.push(result);
                         
-                        self.metrics.valuations_by_method
+                        *self.metrics.valuations_by_method
                             .entry(strategy.method())
-                            .or_insert(0)
-                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            .or_insert(0) += 1;
                     }
                     Err(e) => {
                         warn!("Strategy {} failed for NFT {}: {}", strategy.name(), nft.mint_address, e);
@@ -517,7 +521,7 @@ impl ValuationEngine {
         let valuation_result = ValuationResult {
             estimated_value_lamports: estimated_value,
             confidence,
-            method: strategy_results[0].clone().method, // Primary method
+            method: primary_method.unwrap_or(ValuationMethod::FloorPrice), // Primary method
             strategy_results,
             market_data,
             risk_adjusted_value,

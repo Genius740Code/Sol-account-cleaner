@@ -127,16 +127,16 @@ pub struct BatchMetrics {
     pub avg_batch_time_ms: Arc<std::sync::atomic::AtomicU64>,
     
     /// Average throughput (items per second)
-    pub avg_throughput: Arc<std::sync::atomic::AtomicF64>,
+    pub avg_throughput: Arc<AtomicF64>,
     
     /// Memory usage peak in MB
     pub memory_peak_mb: Arc<std::sync::atomic::AtomicU64>,
     
     /// CPU usage peak in percentage
-    pub cpu_peak_percent: Arc<std::sync::atomic::AtomicF64>,
+    pub cpu_peak_percent: Arc<AtomicF64>,
     
     /// Cache hit rate
-    pub cache_hit_rate: Arc<std::sync::atomic::AtomicF64>,
+    pub cache_hit_rate: Arc<AtomicF64>,
     
     /// Retry count
     pub retry_count: Arc<std::sync::atomic::AtomicU64>,

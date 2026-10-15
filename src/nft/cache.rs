@@ -134,7 +134,7 @@ pub struct CacheMetrics {
     pub cache_size: Arc<std::sync::atomic::AtomicU64>,
     
     /// Hit ratio (0-1)
-    pub hit_ratio: Arc<std::sync::atomic::AtomicF64>,
+    pub hit_ratio: Arc<AtomicF64>,
     
     /// Metrics by cache type
     pub metrics_by_type: Arc<DashMap<CacheEntryType, TypeMetrics>>,

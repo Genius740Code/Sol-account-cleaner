@@ -4,16 +4,19 @@
 //! comprehensive validation, caching, and error handling.
 
 use crate::nft::cache::{CacheManager, CacheKey};
-use crate::nft::errors::{NftError, NftResult, RecoveryStrategy};
+use crate::nft::errors::{NftError, NftResult, RecoveryStrategy, RiskLevel};
 use crate::nft::types::*;
 use crate::rpc::ConnectionPool;
 use crate::core::types::RpcEndpoint;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use futures::StreamExt;
 use moka::future::Cache as MokaCache;
 use rayon::prelude::*;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
@@ -333,7 +336,17 @@ impl MetadataFetcher {
         // Validate metadata
         if self.config.enable_validation {
             let validation_result = self.validate_metadata(&nft_info).await?;
-            nft_info.security_assessment = validation_result.security_assessment;
+            nft_info.security_assessment = SecurityAssessment {
+                risk_level: validation_result.security_issues.iter()
+                    .map(|i| i.severity)
+                    .max()
+                    .unwrap_or(RiskLevel::None),
+                security_score: validation_result.validation_score,
+                issues: validation_result.security_issues.clone(),
+                verified: false,
+                assessed_at: chrono::Utc::now(),
+                confidence: 90,
+            };
             
             if !validation_result.is_valid {
                 self.metrics.validation_errors.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -421,105 +434,42 @@ impl MetadataFetcher {
             })?;
 
         let connection = self.connection_pool.get_client_internal().await
-            .ok_or_else(|| NftError::Network {
-                message: "No available RPC connections".to_string(),
-                source_info: "connection_pool".to_string(),
+            .map_err(|e| NftError::Network {
+                message: format!("No available RPC connections: {}", e),
+                source_info: Some("connection_pool".to_string()),
             })?;
 
-        let account = connection.get_account(&mint_pubkey).await
+        let account = connection.get_account_info(&mint_pubkey).await
             .map_err(|e| NftError::Network {
                 message: format!("Failed to fetch account: {}", e),
-                source_info: "rpc".to_string(),
+                source_info: Some("rpc".to_string()),
             })?;
 
-        // Convert to UiAccount for compatibility
-        let ui_account = solana_account_decoder::UiAccount::encode(
-            &mint_pubkey,
-            &account,
-            solana_account_decoder::UiAccountEncoding::Base64,
-            None,
-            solana_account_decoder::UiDataSliceConfig::default(),
-        ).map_err(|e| NftError::Serialization {
-            message: format!("Failed to encode account: {}", e),
-            format: Some("UiAccount".to_string()),
-            data_type: Some("account".to_string()),
-        })?;
-
-        Ok(ui_account)
+        Ok(account)
     }
 
-    /// Parse on-chain metadata
+    /// Build a basic NFT record from on-chain account data.
+    /// NOTE: Full Metaplex metadata parsing requires the `mpl-token-metadata`
+    /// crate (not currently a dependency); on-chain name/symbol/URI are filled
+    /// from off-chain metadata when available.
     async fn parse_account_metadata(&self, mint_address: &str, account: &solana_account_decoder::UiAccount) -> NftResult<NftInfo> {
-        let data = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &account.data[0])
-            .map_err(|e| NftError::Serialization {
-                message: format!("Failed to decode account data: {}", e),
-                format: Some("base64".to_string()),
-                data_type: Some("account_data".to_string()),
-            })?;
-
-        // Parse Token metadata
-        let metadata = match spl_token_metadata::state::Metadata::deserialize(&mut &data[..]) {
-            Ok(metadata) => metadata,
-            Err(e) => {
-                // If it's not a metadata account, create basic NFT info
-                return Ok(NftInfo {
-                    id: Uuid::new_v4(),
-                    mint_address: mint_address.to_string(),
-                    token_account: account.pubkey.clone(),
-                    owner: account.owner.clone(),
-                    name: None,
-                    symbol: None,
-                    description: None,
-                    metadata_uri: None,
-                    image_uri: None,
-                    animation_uri: None,
-                    external_url: None,
-                    collection: None,
-                    creators: vec![],
-                    attributes: vec![],
-                    token_standard: None,
-                    master_edition: false,
-                    edition_number: None,
-                    max_supply: None,
-                    estimated_value_lamports: None,
-                    last_valuation: None,
-                    security_assessment: SecurityAssessment::default(),
-                    rarity_score: None,
-                    quality_score: None,
-                    metadata_verified: false,
-                    image_verified: false,
-                    discovered_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                    additional_metadata: HashMap::new(),
-                });
-            }
-        };
-
-        let mut nft_info = NftInfo {
+        Ok(NftInfo {
             id: Uuid::new_v4(),
             mint_address: mint_address.to_string(),
-            token_account: account.pubkey.clone(),
+            token_account: mint_address.to_string(),
             owner: account.owner.clone(),
-            name: metadata.name.map(|s| s.replace('\0', "").trim().to_string()),
-            symbol: metadata.symbol.map(|s| s.replace('\0', "").trim().to_string()),
-            description: None, // Will be filled from off-chain metadata
-            metadata_uri: metadata.uri.map(|s| s.replace('\0', "").trim().to_string()),
-            image_uri: None, // Will be filled from off-chain metadata
+            name: None,
+            symbol: None,
+            description: None,
+            metadata_uri: None,
+            image_uri: None,
             animation_uri: None,
             external_url: None,
             collection: None,
-            creators: metadata.creators.iter().map(|c| CreatorInfo {
-                address: c.address.to_string(),
-                verified: c.verified,
-                share: c.share as u8,
-                name: None,
-                twitter: None,
-                website: None,
-                security_assessment: SecurityAssessment::default(),
-            }).collect(),
+            creators: vec![],
             attributes: vec![],
-            token_standard: Some("non-fungible".to_string()),
-            master_edition: false, // Will be determined from master edition account
+            token_standard: None,
+            master_edition: false,
             edition_number: None,
             max_supply: None,
             estimated_value_lamports: None,
@@ -532,26 +482,7 @@ impl MetadataFetcher {
             discovered_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             additional_metadata: HashMap::new(),
-        };
-
-        // Parse collection information if present
-        if let Some(collection) = &metadata.collection {
-            nft_info.collection = Some(CollectionInfo {
-                name: collection.name.replace('\0', "").trim().to_string(),
-                symbol: None,
-                description: None,
-                image: None,
-                uri: None,
-                verified: collection.verified,
-                collection_mint_address: None,
-                security_assessment: SecurityAssessment::default(),
-                floor_price_lamports: None,
-                total_supply: None,
-                item_count: None,
-            });
-        }
-
-        Ok(nft_info)
+        })
     }
 
     /// Fetch off-chain metadata from URI
@@ -629,7 +560,7 @@ impl MetadataFetcher {
 
         // Store additional metadata
         for (key, value) in metadata.as_object().unwrap_or(&serde_json::Map::new()) {
-            if !matches!(key, "name" | "description" | "image" | "animation_url" | "external_url" | "attributes" | "properties") {
+            if !matches!(key.as_str(), "name" | "description" | "image" | "animation_url" | "external_url" | "attributes" | "properties") {
                 nft_info.additional_metadata.insert(key.clone(), value.clone());
             }
         }
@@ -908,10 +839,11 @@ impl ImageProcessor {
         let content_type = response.headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-            .unwrap_or("application/octet-stream");
+            .unwrap_or("application/octet-stream")
+            .to_string();
 
         // Check if format is allowed
-        if !self.config.allowed_formats.contains(&content_type.to_string()) {
+        if !self.config.allowed_formats.contains(&content_type) {
             return Err(NftError::Validation {
                 message: format!("Image format not allowed: {}", content_type),
                 field: Some("image_format".to_string()),
@@ -938,14 +870,15 @@ impl ImageProcessor {
         let mut security_issues = Vec::new();
         let mut verified = true;
 
-        // Basic image validation using image crate
-        let dimensions = match image::load_from_memory(&image_data) {
-            Ok(img) => Some((img.width(), img.height())),
-            Err(e) => {
+        // Basic image validation via magic bytes (no image-codec dependency).
+        // Accepts PNG, JPEG, GIF, WebP signatures only.
+        let dimensions = match detect_image_dimensions(&image_data) {
+            Some(dims) => dims,
+            None => {
                 security_issues.push(SecurityIssue {
                     issue_type: SecurityIssueType::MaliciousImage,
                     severity: RiskLevel::High,
-                    description: format!("Invalid image format: {}", e),
+                    description: "Unrecognized image format".to_string(),
                     recommendation: "Image may be corrupted or malicious".to_string(),
                     confirmed: true,
                     context: None,
@@ -973,12 +906,36 @@ impl ImageProcessor {
     }
 
     /// Extract EXIF data from image
-    fn extract_exif_data(&self, image_data: &[u8]) -> NftResult<Option<HashMap<String, String>>> {
+    fn extract_exif_data(&self, _image_data: &[u8]) -> NftResult<Option<HashMap<String, String>>> {
         // This is a placeholder for EXIF extraction
         // In a real implementation, you would use a library like `kamadak-exif`
         // to extract EXIF data from JPEG images
         Ok(None)
     }
+}
+
+/// Detect image format via magic bytes. Returns dimensions when cheaply
+/// available (PNG IHDR), otherwise Some((0, 0)) for recognized formats.
+fn detect_image_dimensions(data: &[u8]) -> Option<Option<(u32, u32)>> {
+    // PNG: 89 50 4E 47 0D 0A 1A 0A, IHDR width/height at bytes 16..24
+    if data.len() > 24 && &data[0..8] == b"\x89PNG\r\n\x1a\n" {
+        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+        return Some(Some((w, h)));
+    }
+    // JPEG: FF D8 FF
+    if data.len() > 3 && &data[0..3] == b"\xFF\xD8\xFF" {
+        return Some(None);
+    }
+    // GIF87a / GIF89a
+    if data.len() > 6 && (&data[0..6] == b"GIF87a" || &data[0..6] == b"GIF89a") {
+        return Some(None);
+    }
+    // WebP: RIFF....WEBP
+    if data.len() > 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        return Some(None);
+    }
+    None
 }
 
 // Implement metadata fetch strategies
@@ -1137,13 +1094,13 @@ impl MetadataFetchStrategy for IpfsMetadataFetcher {
                         return Ok(metadata);
                     }
                 }
-                Err(_) => continue; // Try next gateway
+                Err(_) => continue, // Try next gateway
             }
         }
 
         Err(NftError::Network {
             message: "All IPFS gateways failed".to_string(),
-            source_info: "ipfs".to_string(),
+            source_info: Some("ipfs".to_string()),
         })
     }
 

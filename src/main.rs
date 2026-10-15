@@ -1011,10 +1011,11 @@ fn print_nft_scan_result(result: &solana_recover::NftScanResult, detailed: bool)
         for issue in &result.security_issues {
             println!("  [{}] {}: {}", 
                 match issue.severity {
-                    solana_recover::nft::types::RiskLevel::High => "HIGH",
-                    solana_recover::nft::types::RiskLevel::Medium => "MED",
-                    solana_recover::nft::types::RiskLevel::Low => "LOW",
-                    solana_recover::nft::types::RiskLevel::None => "NONE",
+                    solana_recover::nft::errors::RiskLevel::High => "HIGH",
+                    solana_recover::nft::errors::RiskLevel::Medium => "MED",
+                    solana_recover::nft::errors::RiskLevel::Low => "LOW",
+                    solana_recover::nft::errors::RiskLevel::None => "NONE",
+                    solana_recover::nft::errors::RiskLevel::Critical => "CRIT",
                 },
                 issue.issue_type,
                 issue.description

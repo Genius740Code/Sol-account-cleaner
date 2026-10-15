@@ -676,3 +676,30 @@ impl fmt::Display for ValuationMethod {
         }
     }
 }
+
+/// Atomic f64 metrics counter (std has no AtomicF64).
+/// Stores f64 bits in an AtomicU64 with CAS-loop arithmetic.
+#[derive(Debug, Default)]
+pub struct AtomicF64(std::sync::atomic::AtomicU64);
+
+impl AtomicF64 {
+    pub fn new(v: f64) -> Self {
+        Self(std::sync::atomic::AtomicU64::new(v.to_bits()))
+    }
+    pub fn load(&self, order: std::sync::atomic::Ordering) -> f64 {
+        f64::from_bits(self.0.load(order))
+    }
+    pub fn store(&self, v: f64, order: std::sync::atomic::Ordering) {
+        self.0.store(v.to_bits(), order);
+    }
+    pub fn fetch_add(&self, v: f64, order: std::sync::atomic::Ordering) -> f64 {
+        let mut old = self.0.load(order);
+        loop {
+            let new = f64::from_bits(old) + v;
+            match self.0.compare_exchange_weak(old, new.to_bits(), order, order) {
+                Ok(_) => return f64::from_bits(old),
+                Err(x) => old = x,
+            }
+        }
+    }
+}

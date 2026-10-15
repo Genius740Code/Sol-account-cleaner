@@ -5,7 +5,7 @@
 
 use crate::nft::batch::{BatchProcessor, BatchJob, BatchJobConfig, BatchJobType, BatchItem, BatchItemData};
 use crate::nft::cache::{CacheManager, CacheKey};
-use crate::nft::errors::{NftError, NftResult};
+use crate::nft::errors::{NftError, NftResult, RiskLevel};
 use crate::nft::metadata::MetadataFetcher;
 use crate::nft::portfolio::PortfolioAnalyzer;
 use crate::nft::security::SecurityValidator;
@@ -129,10 +129,10 @@ pub struct ScannerMetrics {
     pub avg_scan_time_ms: Arc<std::sync::atomic::AtomicU64>,
     
     /// Average NFTs per scan
-    pub avg_nfts_per_scan: Arc<std::sync::atomic::AtomicF64>,
+    pub avg_nfts_per_scan: Arc<AtomicF64>,
     
     /// Cache hit rate
-    pub cache_hit_rate: Arc<std::sync::atomic::AtomicF64>,
+    pub cache_hit_rate: Arc<AtomicF64>,
     
     /// Security issues found
     pub security_issues_found: Arc<std::sync::atomic::AtomicU64>,

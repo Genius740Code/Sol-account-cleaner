@@ -3,7 +3,7 @@
 //! Ultra-fast, comprehensive portfolio analysis with advanced metrics,
 //! risk assessment, and actionable insights.
 
-use crate::nft::errors::{NftError, NftResult};
+use crate::nft::errors::{NftError, NftResult, RiskLevel};
 use crate::nft::types::*;
 use crate::nft::valuation::ValuationEngine;
 use rayon::prelude::*;
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 
 /// Comprehensive NFT portfolio analyzer
 #[derive(Clone)]
@@ -95,7 +96,7 @@ pub struct PortfolioMetrics {
     pub total_nfts_processed: Arc<std::sync::atomic::AtomicU64>,
     
     /// Average portfolio size
-    pub avg_portfolio_size: Arc<std::sync::atomic::AtomicF64>,
+    pub avg_portfolio_size: Arc<AtomicF64>,
     
     /// High-risk portfolios identified
     pub high_risk_portfolios: Arc<std::sync::atomic::AtomicU64>,

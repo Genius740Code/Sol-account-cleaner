@@ -635,7 +635,7 @@ impl SecurityValidator {
             issues: security_issues,
             verified: nft.collection.as_ref().map(|c| c.verified).unwrap_or(false),
             assessed_at: chrono::Utc::now(),
-            confidence: 0.85,
+            confidence: 85,
         };
 
         let validation_result = SecurityValidationResult {
@@ -662,10 +662,9 @@ impl SecurityValidator {
             );
         }
 
-        self.metrics.validations_by_risk
+        *self.metrics.validations_by_risk
             .entry(overall_risk_level)
-            .or_insert(0)
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            .or_insert(0) += 1;
 
         info!("Security validation completed for {} in {}ms - Risk: {}, Score: {}", 
             nft.mint_address, validation_time_ms, overall_risk_level, total_security_score);
