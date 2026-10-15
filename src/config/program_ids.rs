@@ -19,9 +19,10 @@ impl Default for ProgramIds {
                 .expect("Invalid default OpenBook V2 program ID"),
             serum_dex: Pubkey::from_str("srmqPvvk92GzrcCbKgSGx3mFHTEQuoE3jUuAM6gEKrP")
                 .expect("Invalid default Serum DEX program ID"),
-            token_program: Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            // Canonical SPL program IDs (source of truth: spl crates, same 2.x pubkey type)
+            token_program: spl_token::id().to_string().parse()
                 .expect("Invalid default Token program ID"),
-            token_2022_program: Pubkey::from_str("TokenzQdBNbLqP5VEhdk8ir6sZL8TPnq7Xy8YZ6Gv")
+            token_2022_program: spl_token_2022::id().to_string().parse()
                 .expect("Invalid default Token-2022 program ID"),
         }
     }
